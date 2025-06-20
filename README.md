@@ -7,56 +7,86 @@ UnityProject is a full-fledged template for creating games and applications usin
 ## Project structure:
 ### Assets
 - **Source**: Basic scripts and files.
-  - **Animations**: Animations of characters or objects.
-  - **Audio**: Sound effects and music.
-  - **Cameras**: Cameras for different views.
-  - **Editors**: Editorial tools and settings.
-  - **Materials**: Materials for textures and objects.
-  - **Models**: 3D models of characters or objects.
-  - **Prefabs**: Preset objects that can be easily used in the scene.
-  - **Resources**: Resources such as textures and audio files.
-  - **Scripts**: Scripts for controlling the behavior of objects or game logic.
-  - **Settings**: Project settings.
-  - **Sprites**: Transparent images for UI elements.
-  - **Textures**: Textures for various objects and materials.
-  - **TTF**: Fonts.
+  - Animations: Animations of characters or objects.
+  - Audio: Sound effects and music.
+  - Cameras: Cameras for different views.
+  - Editors: Editorial tools and settings.
+  - Materials: Materials for textures and objects.
+  - Models: 3D models of characters or objects.
+  - Prefabs: Preset objects that can be easily used in the scene.
+  - Resources: Resources such as textures and audio files.
+  - Scripts: Scripts for controlling the behavior of objects or game logic.
+  - Settings: Project settings.
+  - Sprites: Transparent images for UI elements.
+  - Textures: Textures for various objects and materials.
+  - TTF: Fonts.
 
 ![image](https://github.com/user-attachments/assets/d388b44d-d758-4d95-8fa7-658bdacc4286)
 
 ### Scenes
 - **SampleScene**: The main scene that contains the structure of the scene. It already has the main components and folders configured that you can use to create your game or application.
-  - **Audio**: Sound effects and music.
-  - **Cameras**: Cameras for different views.
-  - **Dynamic Environment**: A dynamic environment with objects and effects.
-  - **Environment**: General settings and objects.
-  - **Lights**: Lighting in the scene.
-  - **System**: System settings and components.
-  - **UI**: The user interface, including buttons, input fields, and other UI elements.
-  - **VFX**: Visual effects.
+  - Audio: Sound effects and music.
+  - Cameras: Cameras for different views.
+  - Dynamic Environment: A dynamic environment with objects and effects.
+  - Environment: General settings and objects.
+  - Lights: Lighting in the scene.
+  - System: System settings and components.
+  - UI: The user interface, including buttons, input fields, and other UI elements.
+  - VFX: Visual effects.
 
 ![image](https://github.com/user-attachments/assets/eb324e22-0ff3-436f-9523-d1f8acef186c)
 
 ## Using packages:
-All specified packages have already been imported into your project, which simplifies development and allows you to use their functions immediately after downloading the project. For example:
+All specified packages have already been imported into your project, which simplifies development and allows you to use their functions immediately after downloading the project.
 
-1. **DOTween Pro** - animation of objects.
-2. **Epic Toon FX** - stylized models.
-3. **GUI Pro Super Casual** - user-friendly interfaces.
-4. **Highlight Plus** - highlight elements.
-5. **Odin Inspector and Serializer** - inspector and serialization.
-6. **Sprite Shaders Ultimate** - shaders for sprites.
-7. **Tiny** - screenshots.
-8. **Ultimate Editor Enhancer** - Editor improvements.
-9. **UnityUIExtensions** is a UI extension.
-10. **UniTask** - task management.
-11. **UniRx** - reactive operations.
-12. **Zenject** - dependency injection.
-13. **Newtonsoft.Json** - JSON serialization.
+### Animation & Visual Effects
+- DOTween Pro: animation of objects.
+- Epic Toon FX: stylized models.
+- Highlight Plus: highlight elements.
+
+### UI Tools
+- Sprite Shaders Ultimate: shaders for sprites.
+- GUI Pro Super Casual: user-friendly interfaces.
+- Odin Inspector and Serializer: inspector and serialization.
+- UnityUIExtensions: UI extension.
+- Ultimate Editor Enhancer: Editor improvements.
+- Layer Lab: Tools for managing game object layers.
+
+### Security
+- Obfuscator Pro: Code obfuscation tool
+
+### Development Tools
+- Scriptable Sheets: ScriptableObjects editor
+
+### Utilities & Management
+- Tiny: screenshots.
+- UniTask: task management.
+- UniRx: reactive operations.
+- Zenject: dependency injection.
+- Newtonsoft.Json: JSON serialization.
+- Beautify: Enhances the visual appearance of UI elements with custom shaders and styles.
+
+### Audio
+- Casual Game Sounds U6: Provides a collection of sound effects for casual games.
 
 and others...
 
-## Usage example:
-To get started, open the SampleScene scene and start adding your objects or customizing existing ones. Use packages to create animations, customize the user interface, control lighting, etc.
+## Installation:
+To set up the project, follow these steps:
+
+1. Clone the repository or download the project files.
+2. Open Unity and select "Open Project".
+3. Navigate to the directory where you cloned or downloaded the project and open it.
+4. Make sure all packages are imported by going to "Window" > "Package Manager".
+5. Ensure that all necessary packages are active and up-to-date.
+
+## Usage:
+To start using the project:
+
+1. Open the SampleScene scene from the Scenes folder in Unity.
+2. Add your objects or customize existing ones according to your game or application requirements.
+3. Use the imported packages to create animations, customize UI elements, manage tasks, handle reactive operations, etc.
+4. Configure the settings and components as needed.
 
 ## Completion:
 This project template provides a base for a quick start in the development of games or applications using Unity. Follow these instructions and settings to get started on your project.
