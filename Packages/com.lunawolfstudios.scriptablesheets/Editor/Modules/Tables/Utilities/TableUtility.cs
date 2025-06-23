@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 
@@ -21,7 +22,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				var joinedColumnHeaders = formatSettings.GetJoinedColumnHeaders(wrapper);
 				if (firstRowEndIndex >= 0)
 				{
-					var headerRow = flatFileContent.Substring(0, firstRowEndIndex);
+					var headerRow = flatFileContent.Substring(0, firstRowEndIndex).Trim();
 					// Validate column headers match the header row.
 					if (joinedColumnHeaders.Contains(headerRow) || headerRow.Contains(joinedColumnHeaders))
 					{
@@ -38,74 +39,75 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				}
 			}
 			var stringSplitOptions = formatSettings.RemoveEmptyRows ? StringSplitOptions.RemoveEmptyEntries : StringSplitOptions.None;
-			// Use new string array parameter to support older versions of C#.
-			var rowData = flatFileContent.Split(new string[] { formatSettings.RowDelimiter }, stringSplitOptions);
-			var rowIndex = 0;
+			string[] rowData;
 			if (formatSettings.HasWrapping)
 			{
+				var inverseWrap = wrapper.WrapInverse(formatSettings.RowDelimiter);
+				// Replace any trailing white space at end of line.
+				flatFileContent = Regex.Replace(flatFileContent, $@"{Regex.Escape(wrapper.Close.ToString())}\s*{Regex.Escape(formatSettings.RowDelimiter)}\s*{Regex.Escape(wrapper.Open.ToString())}", inverseWrap);
+				// Use new string array parameter to support older versions of C#.
+				rowData = flatFileContent.Split(new string[] { inverseWrap }, stringSplitOptions);
+				for (var i = 0; i < rowData.Length - 1; i++)
+				{
+					rowData[i] += wrapper.Close;
+					var nextRow = i + 1;
+					if (nextRow < rowData.Length)
+					{
+						rowData[nextRow] = wrapper.Open + rowData[nextRow];
+					}
+				}
 				var totalWrapChars = flatFileContent.Count(c => c == wrapper.Open || c == wrapper.Close);
 				var expectedWrapChars = rowData.Length * 2;
 				if (totalWrapChars < expectedWrapChars)
 				{
 					Debug.LogWarning($"Invalid {nameof(WrapOption)} {formatSettings.WrapOption}. Found {totalWrapChars} matching char(s) but expected at least {expectedWrapChars}. Defaulting to {nameof(WrapOption)} {WrapOption.None}.");
 					formatSettings.WrapOption = WrapOption.None;
+					rowData = flatFileContent.Split(new string[] { formatSettings.RowDelimiter }, stringSplitOptions);
 				}
 			}
+			else
+			{
+				rowData = flatFileContent.Split(new string[] { formatSettings.RowDelimiter }, stringSplitOptions);
+			}
+			var rowIndex = 0;
 			for (var row = formatSettings.FirstRowIndex; rowIndex < rowData.Length && row < propertyTable.Rows; row++)
 			{
+				string[] columnData;
 				if (formatSettings.HasWrapping)
 				{
 					var line = rowData[rowIndex].Trim();
-					var columnIndex = 0;
-					var insideWrapper = false;
-					var currentValue = new StringBuilder();
-					var currentDelimiterValue = new StringBuilder();
-					foreach (var character in line)
+					columnData = line.Split(new string[] { wrapper.WrapInverse(formatSettings.ColumnDelimiter) }, StringSplitOptions.None);
+					if (columnData.Length > 0 && columnData[0].StartsWith(wrapper.Open.ToString()))
 					{
-						if (character == wrapper.Open && !insideWrapper)
+						columnData[0] = columnData[0].Remove(0, 1);
+						var lastIndex = columnData.Length - 1;
+						if (columnData[lastIndex].EndsWith(wrapper.Close.ToString()))
 						{
-							insideWrapper = true;
-						}
-						else if (character == wrapper.Close && insideWrapper)
-						{
-							insideWrapper = false;
-						}
-						else if (!insideWrapper)
-						{
-							currentDelimiterValue.Append(character);
-							if (currentDelimiterValue.Length > formatSettings.ColumnDelimiter.Length)
-							{
-								Debug.LogWarning($"Invalid column delimiter '{currentDelimiterValue}' expected '{formatSettings.ColumnDelimiter}'. Are you using the correct {nameof(WrapOption)}?");
-								return;
-							}
-							if (currentDelimiterValue.ToString() == formatSettings.ColumnDelimiter)
-							{
-								var propertyValue = currentValue.ToString();
-								var offsetColumnIndex = columnIndex + formatSettings.FirstColumnIndex;
-								if (offsetColumnIndex >= propertyTable.Columns - 1)
-								{
-									break;
-								}
-								propertyTable.UpdateProperty(row, offsetColumnIndex, currentValue.ToString(), formatSettings);
-								currentValue.Clear();
-								currentDelimiterValue.Clear();
-								columnIndex++;
-							}
-						}
-						else
-						{
-							currentValue.Append(character);
+							columnData[lastIndex] = columnData[lastIndex].Remove(columnData[lastIndex].Length - 1, 1);
 						}
 					}
-					propertyTable.UpdateProperty(row, columnIndex + formatSettings.FirstColumnIndex, currentValue.ToString(), formatSettings);
 				}
 				else
 				{
-					var columnData = rowData[rowIndex].Split(new string[] { formatSettings.ColumnDelimiter }, StringSplitOptions.None);
-					var columnIndex = 0;
+					columnData = rowData[rowIndex].Split(new string[] { formatSettings.ColumnDelimiter }, StringSplitOptions.None);
+				}
+				var columnIndex = 0;
+				if (formatSettings.HasWrapping && formatSettings.EscapeOption != EscapeOption.None)
+				{
+					var escapedOpen = formatSettings.EscapeOption.GetEscapedWrapper(wrapper.Open, formatSettings.CustomEscapeSequence);
+					var escapedClose = formatSettings.EscapeOption.GetEscapedWrapper(wrapper.Close, formatSettings.CustomEscapeSequence);
 					for (var y = formatSettings.FirstColumnIndex; columnIndex < columnData.Length && y < propertyTable.Columns; y++)
 					{
-						UpdateProperty(propertyTable, row, y, columnData[columnIndex], formatSettings);
+						var unescapedValue = wrapper.UnescapeContent(columnData[columnIndex], escapedOpen, escapedClose);
+						propertyTable.UpdateProperty(row, y, unescapedValue, formatSettings);
+						columnIndex++;
+					}
+				}
+				else
+				{
+					for (var y = formatSettings.FirstColumnIndex; columnIndex < columnData.Length && y < propertyTable.Columns; y++)
+					{
+						propertyTable.UpdateProperty(row, y, columnData[columnIndex], formatSettings);
 						columnIndex++;
 					}
 				}
@@ -277,6 +279,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					var property = propertyTable.Get(row, column)?.GetProperty(formatSettings);
 					if (formatSettings.HasWrapping)
 					{
+						if (formatSettings.EscapeOption != EscapeOption.None)
+						{
+							var escapedOpen = formatSettings.EscapeOption.GetEscapedWrapper(wrapper.Open, formatSettings.CustomEscapeSequence);
+							var escapedClose = formatSettings.EscapeOption.GetEscapedWrapper(wrapper.Close, formatSettings.CustomEscapeSequence);
+							property = wrapper.EscapeContent(property, escapedOpen, escapedClose);
+						}
 						flatFile.Wrap(property, wrapper);
 					}
 					else

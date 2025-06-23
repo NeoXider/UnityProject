@@ -1,3 +1,4 @@
+using LunaWolfStudiosEditor.ScriptableSheets.Importers;
 using LunaWolfStudiosEditor.ScriptableSheets.Layout;
 using LunaWolfStudiosEditor.ScriptableSheets.Scanning;
 using Newtonsoft.Json;
@@ -33,13 +34,22 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 		public WorkloadSettings Workload => m_Workload;
 
 		[SerializeField]
+		private ExperimentalSettings m_Experimental;
+		public ExperimentalSettings Experimental => m_Experimental;
+
+		[SerializeField]
+		private List<GoogleSheetsImporter> m_GoogleSheetsImporters = new List<GoogleSheetsImporter>();
+		public List<GoogleSheetsImporter> GoogleSheetsImporters => m_GoogleSheetsImporters;
+
+		[SerializeField]
 		private string m_WindowSessionStates;
 
 		private bool m_IsQuitting;
 		private bool m_WasWindowDestroyedThisUpdate;
 
 		private ScanOption m_PreviousScanOption;
-		private string m_PreviousScanPath;
+		private string[] m_PreviousScanPaths;
+		private bool m_PreviousRootPrefabsOnly;
 		private bool m_PreviousCaseSensitive;
 		private bool m_PreviousStartsWith;
 
@@ -57,6 +67,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 		private bool m_PreviousShowAssetPath;
 		private bool m_PreviousShowGuids;
 		private bool m_PreviousShowReadOnly;
+		private bool m_PreviousSubAssetFilters;
 
 		private int m_PreviousRowsPerPage;
 		private int m_PreviousVisibleColumnLimit;
@@ -119,11 +130,17 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 		{
 			if (ScriptableSheetsEditorWindow.Instances.Count > 0)
 			{
-				var windowSessionStates = new List<WindowSessionState>();
+				var windowSessionStates = GetWindowSessionStates();
+				if (windowSessionStates == null)
+				{
+					windowSessionStates = new HashSet<WindowSessionState>();
+				}
 				foreach (var window in ScriptableSheetsEditorWindow.Instances)
 				{
 					windowSessionStates.Add(window.GetWindowSessionState());
 				}
+				// Remove duplicate session caches that have the same instance id. Take the last group which should be the newest if renamed.
+				windowSessionStates = new HashSet<WindowSessionState>(windowSessionStates.GroupBy(s => s.InstanceId).Select(g => g.Last()));
 				m_WindowSessionStates = JsonConvert.SerializeObject(windowSessionStates);
 			}
 		}
@@ -140,72 +157,151 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 			}
 		}
 
-		public WindowSessionState LoadWindowSessionState(ScriptableSheetsEditorWindow window)
+		public HashSet<WindowSessionState> GetWindowSessionStates()
 		{
 			if (!string.IsNullOrWhiteSpace(m_WindowSessionStates))
 			{
 				try
 				{
-					var windowSessionStates = JsonConvert.DeserializeObject<List<WindowSessionState>>(m_WindowSessionStates);
-					if (windowSessionStates != null && windowSessionStates.Count > 0)
-					{
-						var instanceId = window.GetInstanceID();
-						// Search by instance id first.
-						var windowSessionState = windowSessionStates.FirstOrDefault(s => s.InstanceId == instanceId);
-						if (windowSessionState == null)
-						{
-							var title = window.titleContent.text;
-							var position = window.position.ToString();
-							windowSessionState = windowSessionStates.FirstOrDefault(s => s.Title == title && s.Position == position);
-							if (windowSessionState == null)
-							{
-								// Find the first window sesson state that isn't already in use.
-								var activeInstanceIds = new HashSet<int>(ScriptableSheetsEditorWindow.Instances.Select(i => i.GetInstanceID()));
-								windowSessionState = windowSessionStates.FirstOrDefault(s => !activeInstanceIds.Contains(s.InstanceId));
-							}
-						}
-						// If we did not find a valid session state for this window then use default state.
-						if (windowSessionState != null)
-						{
-							// Validate the pinned indexes have a key for each SheetAsset type.
-							if (windowSessionState.PinnedIndexSets != null && windowSessionState.PinnedIndexSets.Count >= System.Enum.GetNames(typeof(SheetAsset)).Length)
-							{
-								// Validate each hash set within the dictionary is not null.
-								if (!windowSessionState.PinnedIndexSets.Values.Any(v => v == null))
-								{
-									// Remove the found window session state so it's not loaded by another docked window at the same position.
-									windowSessionStates.Remove(windowSessionState);
-									m_WindowSessionStates = JsonConvert.SerializeObject(windowSessionStates);
-									return windowSessionState;
-								}
-								else
-								{
-									Debug.LogWarning($"Failed to load {nameof(WindowSessionState)} data from JSON with value '{m_WindowSessionStates}'. Found null hash set. Using default state.");
-								}
-							}
-							else
-							{
-								Debug.LogWarning($"Failed to load {nameof(WindowSessionState)} data from JSON with value '{m_WindowSessionStates}'. Index sets were not found or missing values. Using default state.");
-							}
-						}
-					}
+					var windowSessionStates = JsonConvert.DeserializeObject<HashSet<WindowSessionState>>(m_WindowSessionStates);
+					return windowSessionStates;
 				}
 				catch (System.Exception ex)
 				{
-					Debug.LogWarning($"Failed to load {nameof(WindowSessionState)} data from JSON with value '{m_WindowSessionStates}'. {ex.Message}. Using default state.");
+					Debug.LogWarning($"Failed to deserialize {nameof(WindowSessionState)} JSON '{m_WindowSessionStates}'. {ex.Message}.");
 				}
 			}
 			return null;
+		}
+
+		public HashSet<WindowSessionState> SaveAndGetWindowSessionStates()
+		{
+			SaveWindowSessions();
+			return GetWindowSessionStates();
+		}
+
+		public void DeleteWindowSessionState(WindowSessionState windowSessionState)
+		{
+			var windowSessionStates = GetWindowSessionStates();
+			if (windowSessionStates == null || windowSessionStates.Count <= 0)
+			{
+				Debug.LogWarning($"Cannot delete {nameof(WindowSessionState)} {windowSessionState.Title}. {nameof(windowSessionStates)} was null or empty.");
+				return;
+			}
+			windowSessionStates.RemoveWhere(s => s.InstanceId == windowSessionState.InstanceId);
+			m_WindowSessionStates = JsonConvert.SerializeObject(windowSessionStates);
+		}
+
+		public WindowSessionState LoadWindowSessionStateFromWindow(ScriptableSheetsEditorWindow window)
+		{
+			var windowSessionStates = GetWindowSessionStates();
+			WindowSessionState windowSessionState = null;
+			if (windowSessionStates != null && windowSessionStates.Count > 0)
+			{
+				var windowPosition = window.position.ToString();
+				var instanceId = window.GetInstanceID();
+				// First search by instance id and position. We include position here as well because Unity's instance id can be unreliable and change.
+				windowSessionState = windowSessionStates.FirstOrDefault(s => s.InstanceId == instanceId && s.Position == windowPosition);
+				if (windowSessionState == null)
+				{
+					// If no valid instance ids were found then look for a matching position.
+					windowSessionState = windowSessionStates.FirstOrDefault(s => s.Position == windowPosition);
+					if (windowSessionState == null)
+					{
+						// Find the first window session state that isn't already in use.
+						var activeInstanceIds = new HashSet<int>(ScriptableSheetsEditorWindow.Instances.Select(i => i.GetInstanceID()));
+						windowSessionState = windowSessionStates.FirstOrDefault(s => !activeInstanceIds.Contains(s.InstanceId));
+					}
+				}
+			}
+			return LoadWindowSessionState(windowSessionState, windowSessionStates);
+		}
+
+		public WindowSessionState LoadWindowSessionState(WindowSessionState windowSessionState, HashSet<WindowSessionState> windowSessionStates = null)
+		{
+			if (windowSessionStates == null)
+			{
+				windowSessionStates = GetWindowSessionStates();
+			}
+			// Use default state if window session state is null.
+			if (windowSessionState == null)
+			{
+				windowSessionState = new WindowSessionState
+				{
+					SelectableSheetAssets = SheetAsset.Default,
+					SelectedSheetAsset = SheetAsset.ScriptableObject,
+					SelectedTypeIndex = 0,
+					NewAmount = 1,
+					SearchInput = string.Empty
+				};
+			}
+
+			if (windowSessionState.PinnedIndexSets == null)
+			{
+				windowSessionState.PinnedIndexSets = new Dictionary<SheetAsset, HashSet<int>>();
+			}
+
+			// Initialize any new or null SheetAsset sets.
+			foreach (SheetAsset sheetAsset in System.Enum.GetValues(typeof(SheetAsset)))
+			{
+				// The set can become null if the file was edited manually.
+				if (!windowSessionState.PinnedIndexSets.TryGetValue(sheetAsset, out var set) || set == null)
+				{
+					windowSessionState.PinnedIndexSets[sheetAsset] = new HashSet<int>();
+				}
+			}
+
+			// Create TableLayout Dictionary for previous Window Session States.
+			if (windowSessionState.TableLayouts == null)
+			{
+				windowSessionState.TableLayouts = new Dictionary<string, TableLayout>();
+			}
+
+			// Remove the found window session state so it's not loaded by another docked window at the same position and so the instance id is overwritten next save.
+			if (windowSessionStates != null && windowSessionStates.Count > 0)
+			{
+				windowSessionStates.Remove(windowSessionState);
+				m_WindowSessionStates = JsonConvert.SerializeObject(windowSessionStates);
+			}
+
+			return windowSessionState;
 		}
 
 		public void DrawGUI(bool isSeparateWindow)
 		{
 			Undo.RecordObject(this, $"{nameof(ScriptableSheetsSettings)}");
 
-			m_DataTransfer.DrawGUI();
-			m_ObjectManagement.DrawGUI();
-			m_UserInterface.DrawGUI();
-			m_Workload.DrawGUI();
+			var serializedObject = new SerializedObject(this);
+			m_DataTransfer.DrawGUI(serializedObject);
+			m_ObjectManagement.DrawGUI(serializedObject);
+			m_UserInterface.DrawGUI(serializedObject);
+			m_Workload.DrawGUI(serializedObject);
+			m_Experimental.DrawGUI(serializedObject);
+
+			SheetLayout.DrawHorizontalLine();
+
+			EditorGUILayout.BeginHorizontal();
+
+			var googleSheetsImportersProperty = serializedObject.FindProperty(nameof(m_GoogleSheetsImporters));
+			EditorGUILayout.PropertyField(googleSheetsImportersProperty, SettingsContent.Label.GoogleSheetsImporters, true);
+			if (GUILayout.Button(SettingsContent.Button.ScanImporters, SheetLayout.InlineButton))
+			{
+				m_GoogleSheetsImporters.Clear();
+				var guids = AssetDatabase.FindAssets($"t:{nameof(GoogleSheetsImporter)}");
+				foreach (var guid in guids)
+				{
+					var path = AssetDatabase.GUIDToAssetPath(guid);
+					var asset = AssetDatabase.LoadAssetAtPath<GoogleSheetsImporter>(path);
+					if (asset != null)
+					{
+						m_GoogleSheetsImporters.Add(asset);
+					}
+				}
+			}
+
+			EditorGUILayout.EndHorizontal();
+
+			serializedObject.ApplyModifiedProperties();
 
 			SheetLayout.DrawHorizontalLine();
 
@@ -237,7 +333,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 
 			// Repaint and refresh column layouts immediately as reactive settings change.
 			var hasScanOptionChanged = m_PreviousScanOption != m_ObjectManagement.Scan.Option;
-			var hasScanPathChanged = m_PreviousScanPath != m_ObjectManagement.Scan.Path;
+			var hasScanPathChanged = !m_PreviousScanPaths.SequenceEqual(m_ObjectManagement.Scan.GetScanPaths());
+			var hasRootPrefabsOnlyChanged = m_PreviousRootPrefabsOnly != m_ObjectManagement.Scan.RootPrefabsOnly;
 			var hasHeaderFormatChanged = m_PreviousHeaderFormat != m_UserInterface.HeaderFormat;
 			var hasShowRowIndexChanged = m_PreviousShowRowIndex != m_UserInterface.ShowRowIndex;
 			var hasShowColumnIndexChanged = m_PreviousShowColumnIndex != m_UserInterface.ShowColumnIndex;
@@ -264,11 +361,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 			var hasHighlightSelectedColumnChanged = m_PreviousHighlightSelectedColumn != m_UserInterface.TableNav.HighlightSelectedColumn;
 			var hasLockNamesChanged = m_PreviousLockNames != m_UserInterface.LockNames;
 			var hasRowsPerPageChanged = m_PreviousRowsPerPage != m_Workload.RowsPerPage;
+			var hasSubAssetFiltersChanged = m_PreviousSubAssetFilters != m_UserInterface.SubAssetFilters;
 
-			var needsRepaint = needsColumnRefresh || hasCaseSensitiveChanged
+			var needsRepaint = needsColumnRefresh || hasRootPrefabsOnlyChanged || hasCaseSensitiveChanged
 				|| hasStartsWithChanged || hasHighlightAlphaChanged
 				|| hasHighlightSelectedRowChanged || hasHighlightSelectedColumnChanged
-				|| hasLockNamesChanged || hasRowsPerPageChanged;
+				|| hasLockNamesChanged || hasRowsPerPageChanged || hasSubAssetFiltersChanged;
 
 			if (needsRepaint)
 			{
@@ -282,7 +380,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 						}
 						window.ScanObjects();
 					}
-					else if (hasScanOptionChanged)
+					else if (hasScanOptionChanged || hasRootPrefabsOnlyChanged)
 					{
 						window.ScanObjects();
 					}
@@ -300,7 +398,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 		private void CacheReactiveSettings()
 		{
 			m_PreviousScanOption = m_ObjectManagement.Scan.Option;
-			m_PreviousScanPath = m_ObjectManagement.Scan.Path;
+			m_PreviousScanPaths = m_ObjectManagement.Scan.GetScanPaths();
+			m_PreviousRootPrefabsOnly = m_ObjectManagement.Scan.RootPrefabsOnly;
 			m_PreviousCaseSensitive = m_ObjectManagement.Search.CaseSensitive;
 			m_PreviousStartsWith = m_ObjectManagement.Search.StartsWith;
 
@@ -329,6 +428,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Settings
 			m_ObjectManagement = new ObjectManagementSettings();
 			m_UserInterface = new UserInterfaceSettings();
 			m_Workload = new WorkloadSettings();
+			m_Experimental = new ExperimentalSettings();
+			m_GoogleSheetsImporters = new List<GoogleSheetsImporter>();
 
 #if UNITY_2020_1_OR_NEWER
 			Save(true);

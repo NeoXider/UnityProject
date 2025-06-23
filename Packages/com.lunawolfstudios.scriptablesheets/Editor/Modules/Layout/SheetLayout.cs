@@ -1,3 +1,5 @@
+using LunaWolfStudiosEditor.ScriptableSheets.Shared;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -58,14 +60,22 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 			if (GUILayout.Button(buttonContent, InlineButton))
 			{
 				// Handle case where folder was deleted.
-				if (!AssetDatabase.IsValidFolder(path))
+				if (!AssetDatabase.IsValidFolder(path) && path != UnityConstants.Packages)
 				{
 					path = Application.dataPath;
 				}
 				var selectedFolder = EditorUtility.OpenFolderPanel("Select Path", path, string.Empty);
-				if (!string.IsNullOrEmpty(selectedFolder) && selectedFolder.Contains(Application.dataPath))
+				if (!string.IsNullOrEmpty(selectedFolder))
 				{
-					path = selectedFolder.Replace(Application.dataPath, "Assets");
+					var projectPath = Application.dataPath.Replace(UnityConstants.DefaultAssetPath, string.Empty);
+					if (selectedFolder.StartsWith(Application.dataPath) || selectedFolder.StartsWith(Path.Combine(projectPath, UnityConstants.Packages)))
+					{
+						path = selectedFolder.Replace(projectPath, string.Empty);
+					}
+					else
+					{
+						Debug.LogWarning($"Invalid path selected '{selectedFolder}'.\nPlease select a folder under {UnityConstants.DefaultAssetPath} or {UnityConstants.Packages}.");
+					}
 					AssetDatabase.Refresh();
 				}
 			}

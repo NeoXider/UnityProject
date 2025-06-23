@@ -3,12 +3,15 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 {
 	public static class EditorIcon
 	{
+		public const string Cancel = "TestFailed";
 		public const string Compact = "CanvasGroup Icon";
+		public const string Confirm = "TestPassed";
 		public const string Copy = "TreeEditor.Duplicate";
 		public const string CopyX = "GridAxisX";
 		public const string CopyY = "GridAxisY";
 		public const string Create = "Toolbar Plus";
 		public const string Delete = "TreeEditor.Trash";
+		public const string Download = "Download-Available";
 		public const string Edit = "editicon.sml";
 		public const string EditPath = "FolderOpened Icon";
 		public const string Expand = "LayoutElement Icon";

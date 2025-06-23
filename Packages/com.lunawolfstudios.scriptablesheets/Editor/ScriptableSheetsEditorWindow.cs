@@ -1,5 +1,8 @@
+using LunaWolfStudiosEditor.ScriptableSheets.Comparables;
+using LunaWolfStudiosEditor.ScriptableSheets.Importers;
 using LunaWolfStudiosEditor.ScriptableSheets.Layout;
 using LunaWolfStudiosEditor.ScriptableSheets.PastePad;
+using LunaWolfStudiosEditor.ScriptableSheets.Popups;
 using LunaWolfStudiosEditor.ScriptableSheets.Scanning;
 using LunaWolfStudiosEditor.ScriptableSheets.Settings;
 using LunaWolfStudiosEditor.ScriptableSheets.Shared;
@@ -25,10 +28,18 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		private const string JsonExtension = "json";
 		private const int FirstAndLastPageThreshold = 4;
 
+		private static WindowSessionState s_NextWindowSessionStateToLoad;
+		private static bool s_IsNextWindowSessionStateClone;
+		private static bool s_IsNewWindowSessionState;
+
 		private readonly ObjectScanner m_Scanner = new ObjectScanner();
 		private readonly Paginator m_Paginator = new Paginator();
 		private readonly TableNav<ITableProperty> m_TableNav = new TableNav<ITableProperty>();
 		private readonly TableSmartPaste<ITableProperty> m_TableSmartPaste = new TableSmartPaste<ITableProperty>();
+
+		private Object m_MainAsset;
+		private int m_SelectedMainAssetIndex;
+		private GoogleSheetsImporter m_GoogleSheetsImporter;
 
 		private List<Object> m_SortedObjects = new List<Object>();
 		private Type m_SelectedType;
@@ -68,12 +79,14 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		private Dictionary<SheetAsset, HashSet<int>> m_PinnedIndexSets;
 		private int m_NewAmount;
 		private string m_SearchInput;
+		private Dictionary<string, TableLayout> m_TableLayouts;
+
+		private bool m_Initialized;
 
 		[MenuItem("Window/Scriptable Sheets")]
 		public static void ShowWindow()
 		{
 			var window = CreateInstance<ScriptableSheetsEditorWindow>();
-			window.titleContent = SheetsContent.Window.Title;
 			window.minSize = new Vector2(600, 400);
 			window.Show();
 		}
@@ -85,33 +98,51 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			m_SearchField = new SearchField();
 			m_Settings = ScriptableSheetsSettings.instance;
 
-			var windowSessionState = m_Settings.LoadWindowSessionState(this);
-			if (windowSessionState == null)
+			WindowSessionState windowSessionState;
+			if (s_IsNewWindowSessionState)
 			{
-				m_SelectableSheetAssets = SheetAsset.Default;
-				m_SelectedSheetAsset = SheetAsset.ScriptableObject;
-				m_SelectedTypeIndex = 0;
-				m_PinnedIndexSets = new Dictionary<SheetAsset, HashSet<int>>();
-				m_NewAmount = 1;
-				m_SearchInput = string.Empty;
-				foreach (SheetAsset sheetAsset in Enum.GetValues(typeof(SheetAsset)))
-				{
-					m_PinnedIndexSets.Add(sheetAsset, new HashSet<int>());
-				}
+				// Load a new window session state when selected from the context menu.
+				// In this case null will use default settings for a new window.
+				windowSessionState = m_Settings.LoadWindowSessionState(null);
+				s_IsNewWindowSessionState = false;
+			}
+			else if (s_NextWindowSessionStateToLoad == null)
+			{
+				// Load this window based on its instance id and position.
+				// If no matches are found then load any recently closed window.
+				// If none are found then load a new window.
+				windowSessionState = m_Settings.LoadWindowSessionStateFromWindow(this);
 			}
 			else
 			{
-				m_SelectableSheetAssets = windowSessionState.SelectableSheetAssets;
-				m_SelectedSheetAsset = windowSessionState.SelectedSheetAsset;
-				m_SelectedTypeIndex = windowSessionState.SelectedTypeIndex;
-				m_PinnedIndexSets = windowSessionState.PinnedIndexSets;
-				m_NewAmount = windowSessionState.NewAmount;
-				m_SearchInput = windowSessionState.SearchInput;
+				// Load a specific Window that was opened from the context menu.
+				windowSessionState = m_Settings.LoadWindowSessionState(s_NextWindowSessionStateToLoad);
+				if (!s_IsNextWindowSessionStateClone)
+				{
+					m_Settings.DeleteWindowSessionState(s_NextWindowSessionStateToLoad);
+				}
+				s_NextWindowSessionStateToLoad = null;
+				s_IsNextWindowSessionStateClone = false;
 			}
+
+			m_SelectableSheetAssets = windowSessionState.SelectableSheetAssets;
+			m_SelectedSheetAsset = windowSessionState.SelectedSheetAsset;
+			m_SelectedTypeIndex = windowSessionState.SelectedTypeIndex;
+			m_PinnedIndexSets = windowSessionState.PinnedIndexSets;
+			m_NewAmount = windowSessionState.NewAmount;
+			m_SearchInput = windowSessionState.SearchInput;
+			m_TableLayouts = windowSessionState.TableLayouts;
 
 			// Workaround because we cannot directly scan for objects within OnEnable.
 			// This is due to a bug with calling AssetDatabase.Refresh within OnEnable when opening a window via custom Layout.
 			m_Reinitialized = true;
+
+			// Defer titleContent assignment to ensure it isn't overwritten by Unity's layout restoration system.
+			// Without this, multiple windows with the same name may share the same GUIContent instance on startup, causing renaming issues.
+			// But also initialize regardless incase the window is immediately destroyed from a layout change.
+			InitializeTitleContent(windowSessionState.Title);
+			m_Initialized = false;
+			EditorApplication.delayCall += () => InitializeTitleContent(windowSessionState.Title);
 		}
 
 		private void OnDisable()
@@ -121,7 +152,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 
 		private void OnDestroy()
 		{
-			m_Settings.WindowDestroyed();
+			// Workaround for when a single docked window is maximized then minimized, Unity briefly clones then destroys the window.
+			// This ensures we're not saving each clone.
+			if (m_Initialized || Instances.Count != 2 || Instances[0].titleContent.text != Instances[1].titleContent.text)
+			{
+				m_Settings.WindowDestroyed();
+			}
 			Instances.Remove(this);
 		}
 
@@ -131,6 +167,16 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			{
 				Repaint();
 			}
+		}
+
+		private void InitializeTitleContent(string title)
+		{
+			titleContent = SheetsContent.Window.GetDefaultTitleContent();
+			if (!string.IsNullOrWhiteSpace(title))
+			{
+				titleContent.text = title;
+			}
+			m_Initialized = true;
 		}
 
 		public void ForceRefreshColumnLayout()
@@ -151,6 +197,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				PinnedIndexSets = m_PinnedIndexSets,
 				NewAmount = m_NewAmount,
 				SearchInput = m_SearchInput,
+				TableLayouts = m_TableLayouts,
 			};
 			return windowSession;
 		}
@@ -170,7 +217,6 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		{
 			return m_SelectedSheetAsset == SheetAsset.ScriptableObject && m_SelectedType != null && m_SelectedType.IsSubclassOf(typeof(ScriptableObject));
 		}
-
 
 		private void OnUndoRedoPerformed()
 		{
@@ -252,6 +298,21 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 						ResetSelectedType();
 						previousSelectedSheetAsset = m_SelectedSheetAsset;
 						ScanObjects();
+
+						// If there are no pins then use the default type when the Sheet Asset changes. Ignore for ScriptableObjects.
+						if (m_SelectedSheetAsset != SheetAsset.ScriptableObject && m_PinnedIndexSets[m_SelectedSheetAsset].Count <= 0 && m_Scanner.ObjectTypes.Length > 0)
+						{
+							var defaultSheetAssetType = m_SelectedSheetAsset.GetDefaultType();
+							for (var i = 0; i < m_Scanner.ObjectTypes.Length; i++)
+							{
+								if (m_Scanner.ObjectTypes[i].FullName == defaultSheetAssetType)
+								{
+									m_SelectedTypeIndex = i;
+									break;
+								}
+							}
+						}
+
 						// Exit early after Scanning Objects.
 						EditorGUILayout.EndHorizontal();
 						EditorGUILayout.EndScrollView();
@@ -276,8 +337,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				if (!isScriptableObject || m_Settings.ObjectManagement.Scan.Option != ScanOption.Assembly)
 				{
 					EditorGUILayout.EndHorizontal();
-					EditorGUILayout.HelpBox($"Did not find any objects of type {m_SelectedSheetAsset} under path {m_Settings.ObjectManagement.Scan.Path}. Try updating the path or creating a new asset.", MessageType.Warning);
-					m_NewAssetPath = string.Empty;
+					EditorGUILayout.HelpBox($"Did not find any objects of type {m_SelectedSheetAsset} under path(s):\n{m_Settings.ObjectManagement.Scan.GetJoinedScanPaths()}\nUpdate the scan path or create a new asset.", MessageType.Warning);
+					m_NewAssetPath = m_Settings.ObjectManagement.Scan.GetFirstScanPath();
 					m_Paginator.GoToFirstPage();
 					m_SortedObjects.Clear();
 					return;
@@ -342,9 +403,47 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			}
 			m_SelectedType = m_Scanner.ObjectTypes[m_SelectedTypeIndex];
 			var filteredObjects = m_Scanner.Objects.Where(o => o.GetType() == m_SelectedType).ToArray();
+			MonoScript monoScript = null;
+			var hasMainAssetIndexChanged = false;
 			if (isScriptableObject)
 			{
-				if (!s_MonoScriptCache.TryGetValue(m_SelectedType, out MonoScript monoScript))
+				if (m_Settings.UserInterface.SubAssetFilters && m_Scanner.SubAssetsByTypeAndMainAsset.TryGetValue(m_SelectedType, out var subAssetByMainAsset))
+				{
+					subAssetByMainAsset = subAssetByMainAsset.Where(kvp => kvp.Key != null).ToDictionary(kvp => kvp.Key, pair => pair.Value);
+					if (subAssetByMainAsset.Count > 0)
+					{
+						var separator = subAssetByMainAsset.Count > SheetLayout.SubMenuThreshold ? '/' : '.';
+						var subAssetMainAssetsAsString = subAssetByMainAsset.Keys.Select(mainAsset => mainAsset.GetType().Name + separator + mainAsset.name).ToArray();
+						var previousMainAssetIndex = m_SelectedMainAssetIndex;
+						GUI.SetNextControlName(string.Empty);
+						m_SelectedMainAssetIndex = EditorGUILayout.Popup(string.Empty, m_SelectedMainAssetIndex, subAssetMainAssetsAsString);
+						if (m_SelectedMainAssetIndex < 0 || m_SelectedMainAssetIndex >= subAssetByMainAsset.Keys.Count)
+						{
+							m_SelectedMainAssetIndex = 0;
+						}
+						hasMainAssetIndexChanged = previousMainAssetIndex != m_SelectedMainAssetIndex;
+						if (hasMainAssetIndexChanged)
+						{
+							var tableLayout = GetTableLayout();
+							tableLayout.MainAssetIndex = m_SelectedMainAssetIndex;
+						}
+						m_MainAsset = subAssetByMainAsset.Keys.ElementAt(m_SelectedMainAssetIndex);
+						subAssetByMainAsset[m_MainAsset].RemoveAll(obj => obj == null);
+						filteredObjects = subAssetByMainAsset[m_MainAsset].ToArray();
+					}
+					else
+					{
+						m_Scanner.SubAssetsByTypeAndMainAsset.Remove(m_SelectedType);
+						m_MainAsset = null;
+						m_SelectedMainAssetIndex = 0;
+					}
+				}
+				else
+				{
+					m_MainAsset = null;
+					m_SelectedMainAssetIndex = 0;
+				}
+				if (!s_MonoScriptCache.TryGetValue(m_SelectedType, out monoScript))
 				{
 					var tempScriptableObject = CreateInstance(m_SelectedType);
 					monoScript = MonoScript.FromScriptableObject(tempScriptableObject);
@@ -359,6 +458,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			EditorGUILayout.BeginHorizontal();
 			if (isScriptableObject)
 			{
+				if (string.IsNullOrEmpty(m_NewAssetPath))
+				{
+					m_NewAssetPath = m_Settings.ObjectManagement.Scan.GetFirstScanPath();
+				}
 				if (GUILayout.Button(SheetsContent.Button.GetCreateContent(m_NewAmount), SheetLayout.InlineButton))
 				{
 					var confirmed = true;
@@ -386,11 +489,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 								prefix = prefix.ExpandAll(newObjectIndex, selectedTypeName, indexPadding);
 								suffix = suffix.ExpandAll(newObjectIndex, selectedTypeName, indexPadding);
 							}
-							newObjectName = $"{prefix}{newObjectName}{suffix}.asset";
-							if (string.IsNullOrEmpty(m_NewAssetPath))
-							{
-								m_NewAssetPath = m_Settings.ObjectManagement.Scan.Path;
-							}
+							newObjectName = $"{prefix}{newObjectName}{suffix}{UnityConstants.Extensions.Asset}";
 							if (!AssetDatabase.IsValidFolder(m_NewAssetPath))
 							{
 								// If the path got deleted somehow, attempt to recreate it.
@@ -407,7 +506,34 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 								Debug.Log($"Creating new asset of type {m_SelectedType} with name {newObjectName} at path {uniqueAssetPath}");
 							}
 							var newScriptableObject = CreateInstance(m_SelectedType);
-							AssetDatabase.CreateAsset(newScriptableObject, uniqueAssetPath);
+							if (m_Settings.ObjectManagement.DefaultMainAsset != null)
+							{
+								m_MainAsset = m_Settings.ObjectManagement.DefaultMainAsset;
+							}
+							if (m_MainAsset != null)
+							{
+								AssetDatabase.AddObjectToAsset(newScriptableObject, m_MainAsset);
+								newScriptableObject.name = newObjectName.Substring(0, newObjectName.LastIndexOf('.'));
+
+								if (!m_Scanner.SubAssetsByTypeAndMainAsset.TryGetValue(m_SelectedType, out var subAssetByMainAsset))
+								{
+									subAssetByMainAsset = new Dictionary<Object, List<Object>>();
+									m_Scanner.SubAssetsByTypeAndMainAsset[m_SelectedType] = subAssetByMainAsset;
+								}
+								if (!m_Scanner.SubAssetsByTypeAndMainAsset[m_SelectedType].TryGetValue(m_MainAsset, out var subAssets))
+								{
+									subAssets = new List<Object>();
+									m_Scanner.SubAssetsByTypeAndMainAsset[m_SelectedType][m_MainAsset] = subAssets;
+									m_SelectedMainAssetIndex = m_Scanner.SubAssetsByTypeAndMainAsset[m_SelectedType].Count - 1;
+								}
+								subAssets.Add(newScriptableObject);
+
+								AssetDatabase.SaveAssets();
+							}
+							else
+							{
+								AssetDatabase.CreateAsset(newScriptableObject, uniqueAssetPath);
+							}
 							m_Scanner.Objects.Add(newScriptableObject);
 						}
 						AssetDatabase.Refresh();
@@ -426,13 +552,34 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				GUI.SetNextControlName(string.Empty);
 				m_NewAmount = EditorGUILayout.IntField(m_NewAmount, SheetLayout.PropertySmall);
 				m_NewAmount = Mathf.Clamp(m_NewAmount, 1, 9999);
-				m_NewAssetPath = SheetLayout.DrawAssetPathSettingGUI(GUIContent.none, SheetsContent.Button.EditNewAssetPath, m_NewAssetPath, SheetLayout.Empty);
+				var selectedNewAssetPath = SheetLayout.DrawAssetPathSettingGUI(GUIContent.none, SheetsContent.Button.EditNewAssetPath, m_NewAssetPath, SheetLayout.Empty);
+				if (AssetDatabase.IsValidFolder(selectedNewAssetPath))
+				{
+					m_NewAssetPath = selectedNewAssetPath;
+				}
+				else
+				{
+					Debug.LogWarning($"'{selectedNewAssetPath}' is not a valid path for new assets.\nPlease select a folder under Assets or a mutable Package.");
+				}
+				// If the folder was deleted we need to reset the new asset path.
+				if (!AssetDatabase.IsValidFolder(m_NewAssetPath))
+				{
+					m_NewAssetPath = m_Settings.ObjectManagement.Scan.GetFirstScanPath();
+				}
 			}
 
 			if (filteredObjects.Length <= 0)
 			{
 				EditorGUILayout.EndHorizontal();
-				EditorGUILayout.HelpBox($"Did not find any objects of type {m_SelectedType} under path {m_Settings.ObjectManagement.Scan.Path}. Try updating the path or creating a new asset.", MessageType.Warning);
+				if (m_MainAsset == null)
+				{
+					EditorGUILayout.HelpBox($"Did not find any objects of type {m_SelectedType} under path(s):\n{m_Settings.ObjectManagement.Scan.GetJoinedScanPaths()}\nUpdate the scan path or create a new asset.", MessageType.Warning);
+				}
+				else
+				{
+					var mainAssetPath = AssetDatabase.GetAssetPath(m_MainAsset);
+					EditorGUILayout.HelpBox($"Did not find any objects of type {m_SelectedType} under main asset:\n{mainAssetPath}\nSelect a new main asset or create a new subasset.", MessageType.Warning);
+				}
 				m_Paginator.GoToFirstPage();
 				m_SortedObjects.Clear();
 				return;
@@ -447,17 +594,43 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			var hasSelectedTypeChanged = m_PreviousSelectedType != m_SelectedType;
 			m_PreviousSelectedType = m_SelectedType;
 
-			if (hasSelectedTypeChanged)
+			if (hasSelectedTypeChanged || hasMainAssetIndexChanged)
 			{
 				m_TableNav.ResetTextFieldEditing();
 			}
 
-			if (string.IsNullOrEmpty(m_NewAssetPath) || hasSelectedTypeChanged)
+			if (string.IsNullOrEmpty(m_NewAssetPath) || hasSelectedTypeChanged || hasMainAssetIndexChanged)
 			{
-				var defaultNewAssetPath = AssetDatabase.GetAssetPath(filteredObjects[0]).Replace($"{filteredObjects[0].name}.asset", string.Empty);
-				if (string.IsNullOrEmpty(defaultNewAssetPath))
+				var assetPath = AssetDatabase.GetAssetPath(filteredObjects[0]);
+				var extension = Path.GetExtension(assetPath);
+				var defaultNewAssetPath = assetPath.Replace($"{filteredObjects[0].name}{extension}", string.Empty);
+				// Use default asset path for assets within immutable packages.
+				if (PackageUtility.IsAssetImmutable(defaultNewAssetPath))
 				{
-					defaultNewAssetPath = m_Settings.ObjectManagement.Scan.Path;
+					defaultNewAssetPath = UnityConstants.DefaultAssetPath;
+				}
+				else
+				{
+					// Check for subasset paths.
+					if (defaultNewAssetPath.EndsWith(extension))
+					{
+						defaultNewAssetPath = defaultNewAssetPath.Substring(0, defaultNewAssetPath.LastIndexOf('/') + 1);
+					}
+					// In older versions of Unity IsValidFolder will return false if it ends in a forward slash.
+					// https://issuetracker.unity3d.com/issues/assetdatabase-dot-isvalidfolder-returns-false-when-the-end-of-the-path-string-contains-a-directory-separator-slash
+					defaultNewAssetPath = defaultNewAssetPath.TrimEnd('/');
+					if (string.IsNullOrEmpty(defaultNewAssetPath) || !AssetDatabase.IsValidFolder(defaultNewAssetPath))
+					{
+						var firstScanPath = m_Settings.ObjectManagement.Scan.GetFirstScanPath();
+						if (AssetDatabase.IsValidFolder(firstScanPath))
+						{
+							defaultNewAssetPath = firstScanPath;
+						}
+						else
+						{
+							defaultNewAssetPath = UnityConstants.DefaultAssetPath;
+						}
+					}
 				}
 				m_NewAssetPath = defaultNewAssetPath;
 			}
@@ -467,7 +640,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			if (m_MultiColumnHeader == null || hasSelectedTypeChanged || m_ForceRefreshColumnLayout)
 			{
 				m_ForceRefreshColumnLayout = false;
-				if (m_Settings.UserInterface.OverrideArraySize)
+				if (m_Settings.UserInterface.OverrideArraySize && isScriptableObject)
 				{
 					var tempScriptableObject = CreateInstance(m_SelectedType);
 					RefreshColumnLayout(tempScriptableObject, hasSelectedTypeChanged);
@@ -479,7 +652,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				}
 			}
 
-			if (m_SortingChanged || hasSelectedTypeChanged)
+			if (m_SortingChanged || hasSelectedTypeChanged || hasMainAssetIndexChanged)
 			{
 				m_SortedObjects = m_MultiColumnHeader.GetSorted(filteredObjects);
 				m_SortingChanged = false;
@@ -496,12 +669,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			var excessVisibleColumns = visibleColumnsLength - m_Settings.Workload.VisibleColumnLimit;
 			if (excessVisibleColumns > 0)
 			{
-				m_MultiColumnHeaderState.visibleColumns = m_MultiColumnHeaderState.visibleColumns.Take(visibleColumnsLength - excessVisibleColumns).ToArray();
+				SetVisibleColumns(m_MultiColumnHeaderState.visibleColumns.Take(visibleColumnsLength - excessVisibleColumns).ToArray());
 			}
 			GUI.enabled = m_MultiColumnHeaderState.visibleColumns.Length < Mathf.Min(m_Columns.Length, m_Settings.Workload.VisibleColumnLimit);
 			if (GUILayout.Button(SheetsContent.Button.ShowColumns, SheetLayout.InlineButton))
 			{
-				m_MultiColumnHeaderState.visibleColumns = m_Columns.GetClampedColumns(m_Settings.Workload.VisibleColumnLimit);
+				SetVisibleColumns(m_Columns.GetClampedColumns(m_Settings.Workload.VisibleColumnLimit));
 			}
 			GUI.enabled = true;
 			var totalColumns = m_MultiColumnHeaderState.columns.Length;
@@ -515,26 +688,36 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			{
 				SheetLayout.CenterLabelStyle.normal.textColor = Color.yellow;
 			}
-			EditorGUILayout.LabelField(columnLabelContent, SheetLayout.CenterLabelStyle, GUILayout.Width(columnLabelWidth));
+			if (GUILayout.Button(columnLabelContent, SheetLayout.CenterLabelStyle, GUILayout.Width(columnLabelWidth)))
+			{
+				// Ensure we reset the color if the button was pressed.
+				SheetLayout.CenterLabelStyle.normal.textColor = centerLabelStyleTextColor;
+				ShowColumnVisibilityPopup();
+			}
 			SheetLayout.CenterLabelStyle.normal.textColor = centerLabelStyleTextColor;
 			GUI.enabled = m_MultiColumnHeaderState.visibleColumns.Length > 1;
 			if (GUILayout.Button(SheetsContent.Button.HideColumns, SheetLayout.InlineButton))
 			{
-				m_MultiColumnHeaderState.visibleColumns = new int[] { 0 };
+				SetVisibleColumns(new int[] { 0 });
 			}
 			GUI.enabled = true;
 			SheetLayout.DrawVerticalLine();
 			if (GUILayout.Button(SheetsContent.Button.Stretch, SheetLayout.InlineButton))
 			{
 				m_MultiColumnHeader.ResizeToFit();
+				// ResizeToFit is a Unity function that doesn't update widths immediately so we wait for a delay before caching the new widths.
+				EditorApplication.delayCall -= CacheColumnLayout;
+				EditorApplication.delayCall += CacheColumnLayout;
 			}
 			if (GUILayout.Button(SheetsContent.Button.Compact, SheetLayout.InlineButton))
 			{
 				m_MultiColumnHeader.ResizeToMinWidth();
+				CacheColumnLayout();
 			}
 			if (GUILayout.Button(SheetsContent.Button.Expand, SheetLayout.InlineButton))
 			{
 				m_MultiColumnHeader.ResizeToHeaderWidth(SheetLayout.InlineLabelSpacing);
+				CacheColumnLayout();
 			}
 			SheetLayout.DrawVerticalLine();
 			if (GUILayout.Button(SheetsContent.Button.CopyToClipboard, SheetLayout.InlineButton))
@@ -556,6 +739,20 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			}
 			EditorGUI.EndDisabledGroup();
 			SheetLayout.DrawVerticalLine();
+			if (m_Settings.UserInterface.SubAssetFilters && m_MainAsset)
+			{
+				m_GoogleSheetsImporter = m_Settings.GoogleSheetsImporters?.FirstOrDefault(c => c != null && c.IsTypeMatch(m_SelectedType, monoScript) && m_MainAsset == c.MainAsset);
+			}
+			else
+			{
+				m_GoogleSheetsImporter = m_Settings.GoogleSheetsImporters?.FirstOrDefault(c => c != null && c.IsTypeMatch(m_SelectedType, monoScript) && c.MainAsset == null);
+			}
+			EditorGUI.BeginDisabledGroup(m_GoogleSheetsImporter == null);
+			if (GUILayout.Button(SheetsContent.Button.ImportGoogleSheetsCsv, SheetLayout.InlineButton))
+			{
+				DownloadGoogleSheetsDataAsync();
+			}
+			EditorGUI.EndDisabledGroup();
 			if (GUILayout.Button(SheetsContent.Button.ImportFile, SheetLayout.InlineButton))
 			{
 				var filePath = EditorUtility.OpenFilePanel("Import", Application.dataPath, "*");
@@ -673,6 +870,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				height = rowHeight,
 			};
 			m_MultiColumnHeader.OnGUI(columnHeaderRowRect, m_ScrollPosition.x);
+			GUILayout.Space(rowHeight);
 
 			// GetRect returns an empty rect during certain event types like layout.
 			// In versions after 2022.3.43f1 and 6000.0.15f1. Unity starts returning a rect with float.MaxValue so we need to check that as well.
@@ -687,6 +885,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 					{
 						height = (totalRows + SheetLayout.TableViewRowPadding) * rowHeight,
 						xMax = m_MultiColumnHeaderState.widthOfAllVisibleColumns,
+						yMin = windowRect.y + rowHeight
 					};
 					if (!m_TableNav.WasKeyboardNav && m_TableNav.HasFocus && m_PropertyTable.IsValidCoordinate(m_TableNav.PreviousFocusedCoordinate))
 					{
@@ -718,11 +917,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			if (m_Settings.Workload.Virtualization && m_TableAction == TableAction.None)
 			{
 				var adjustedScrollStartY = scrollStart.y - rowHeight - m_ScrollViewArea.y;
-				startingRowIndex = Mathf.Max(0, Mathf.CeilToInt(adjustedScrollStartY / rowHeight) - 1);
+				startingRowIndex = Mathf.Max(0, Mathf.CeilToInt(adjustedScrollStartY / rowHeight));
 
 				var totalColumnWidth = 0f;
-				foreach (var visibleColumnIndex in m_MultiColumnHeaderState.visibleColumns)
+				foreach (var visibleColumn in m_MultiColumnHeaderState.visibleColumns)
 				{
+					var visibleColumnIndex = m_MultiColumnHeader.GetVisibleColumnIndex(visibleColumn);
 					totalColumnWidth += m_MultiColumnHeader.GetColumnRect(visibleColumnIndex).width;
 					if (totalColumnWidth > scrollStart.x)
 					{
@@ -776,18 +976,38 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 					if (GUI.Button(secondActionRect, SheetsContent.Button.Delete))
 					{
 						var assetName = rootObject.name;
-						if (!m_Settings.UserInterface.ConfirmDelete || EditorUtility.DisplayDialog($"Delete {assetName} asset?", $"{assetPath}\n\nYou cannot undo the delete assets action.", "Delete", "Cancel"))
+						var isSubAsset = AssetDatabase.IsSubAsset(rootObject);
+						if (!m_Settings.UserInterface.ConfirmDelete || EditorUtility.DisplayDialog($"Delete {assetName} {(isSubAsset ? "subasset" : "asset")}?", $"{assetPath}\n\nYou cannot undo the delete assets action.", "Delete", "Cancel"))
 						{
-							if (m_Settings.Workload.Debug)
+							if (!PackageUtility.IsAssetImmutable(rootObject))
 							{
-								Debug.Log($"Deleting asset with name {assetName} at path {assetPath}");
+								if (m_Settings.Workload.Debug)
+								{
+									Debug.Log($"Deleting asset with name {assetName} at path {assetPath}");
+								}
+								if (isSubAsset)
+								{
+									AssetDatabase.RemoveObjectFromAsset(rootObject);
+									AssetDatabase.SaveAssets();
+									if (isScriptableObject && m_Settings.UserInterface.SubAssetFilters)
+									{
+										m_Scanner.SubAssetsByTypeAndMainAsset[m_SelectedType][m_MainAsset].Remove(rootObject);
+									}
+								}
+								else
+								{
+									AssetDatabase.DeleteAsset(assetPath);
+								}
+								m_Scanner.Objects.Remove(rootObject);
+								DestroyImmediate(rootObject, true);
+								GUI.EndScrollView(true);
+								GUIUtility.keyboardControl = 0;
+								return;
 							}
-							AssetDatabase.DeleteAsset(assetPath);
-							m_Scanner.Objects.Remove(rootObject);
-							DestroyImmediate(rootObject, true);
-							GUI.EndScrollView(true);
-							GUIUtility.keyboardControl = 0;
-							return;
+							else
+							{
+								Debug.LogWarning($"Unable to delete asset {assetName} at path {assetPath}\nThe asset is in an immutable folder.");
+							}
 						}
 						actionRect.x = secondActionRect.xMax + SheetLayout.InlineButtonSpacing;
 					}
@@ -801,16 +1021,24 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 					columnRect.y = rowRect.y;
 					var textFieldRect = m_MultiColumnHeader.GetCellRect(visibleColumnIndex, columnRect);
 
-					var nameProperty = serializedObject.FindProperty(UnityConstants.Field.Name);
+					var nameProperty = GetNameProperty(serializedObject);
 					var nextControlName = m_TableNav.SetNextControlName(m_PropertyTable, rowIndex, visibleColumnIndex);
 					EditorGUI.BeginDisabledGroup(m_Settings.UserInterface.LockNames);
 					var newName = EditorGUI.TextField(textFieldRect, rootObject.name);
 					EditorGUI.EndDisabledGroup();
-					var nameTableProperty = new SerializedTableProperty(rootObject, nameProperty.propertyPath, nextControlName);
+					var nameTableProperty = new SerializedTableProperty(nameProperty.serializedObject.targetObject, nameProperty.propertyPath, nextControlName);
 					m_PropertyTable.Set(rowIndex, visibleColumnIndex, nameTableProperty);
 					if (newName != rootObject.name)
 					{
-						AssetDatabase.RenameAsset(assetPath, newName);
+						// Only rename if it's the main asset.
+						if (assetPath.Contains($"/{rootObject.name}."))
+						{
+							AssetDatabase.RenameAsset(assetPath, newName);
+						}
+						else
+						{
+							rootObject.name = newName;
+						}
 						// Exit early for performance.
 						// We prefer this over using a delayed field because the delayed field is less reliable especially when changing asset type mid edit.
 						return;
@@ -858,6 +1086,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				var iterator = serializedObject.GetIterator();
 				var lastVisibleColumn = false;
 				var includeChildren = true;
+				var renderingOverrides = m_Settings.Experimental.GetRenderingOverrides();
 				while (iterator.NextVisible(includeChildren))
 				{
 					// Some Unity assets like Prefabs include the m_Name property in their iterator. Skip over it because we draw it separately for all Objects.
@@ -865,12 +1094,14 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 					{
 						continue;
 					}
-					includeChildren = m_Settings.UserInterface.ShowChildren;
+
+					var useAssetReferenceDrawer = !m_Settings.UserInterface.ShowReadOnly && iterator.IsAssetReference();
+					includeChildren = m_Settings.UserInterface.ShowChildren && !useAssetReferenceDrawer;
 					if (!m_MultiColumnTooltipPaths.TryGetValue(iterator.propertyPath, out int nextColumnIndex))
 					{
 						continue;
 					}
-					if (nextColumnIndex >= startingColumnIndex && iterator.IsPropertyVisible(m_Settings.UserInterface.ShowArrays, m_Settings.UserInterface.ShowReadOnly, out bool isReadOnlyUnityField))
+					if (nextColumnIndex >= startingColumnIndex && (iterator.IsPropertyVisible(m_Settings.UserInterface.ShowArrays, m_Settings.UserInterface.ShowReadOnly, out bool isReadOnlyUnityField) || useAssetReferenceDrawer))
 					{
 						if (m_MultiColumnHeader.IsColumnVisible(nextColumnIndex))
 						{
@@ -879,14 +1110,22 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 							columnRect.y = rowRect.y;
 							var propertyRect = m_MultiColumnHeader.GetCellRect(visibleColumnIndex, columnRect);
 							var propertyControlName = m_TableNav.SetNextControlName(m_PropertyTable, rowIndex, visibleColumnIndex);
-							var isCustomField = isScriptableObject && !isReadOnlyUnityField;
+							var isCustomField = (isScriptableObject || serializedObject.targetObject is Component) && !isReadOnlyUnityField;
 							Profiler.BeginSample("DrawProperty");
 							EditorGUI.BeginDisabledGroup(!iterator.editable || isReadOnlyUnityField);
-							iterator.DrawProperty(propertyRect, rootObject, isCustomField, out bool arraySizeChanged);
-							if (m_Settings.UserInterface.ShowArrays && isFirstFilteredObject && arraySizeChanged)
+							if (renderingOverrides.Contains(iterator.propertyType))
 							{
-								// The first filtered Object drives the column layout. One of its array sizes changed so the column layout gets refreshed.
-								m_ForceRefreshColumnLayout = true;
+								propertyRect.height = EditorGUI.GetPropertyHeight(iterator, false);
+								EditorGUI.PropertyField(propertyRect, iterator, GUIContent.none, false);
+							}
+							else
+							{
+								iterator.DrawProperty(propertyRect, rootObject, isCustomField, out bool arraySizeChanged);
+								if (m_Settings.UserInterface.ShowArrays && isFirstFilteredObject && arraySizeChanged)
+								{
+									// The first filtered Object drives the column layout. One of its array sizes changed so the column layout gets refreshed.
+									m_ForceRefreshColumnLayout = true;
+								}
 							}
 							EditorGUI.EndDisabledGroup();
 							Profiler.EndSample();
@@ -928,9 +1167,19 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				ScrollStart = scrollStart,
 				ScrollEnd = scrollEnd,
 			};
-			m_TableNav.UpdateFocusVisuals(m_PropertyTable, m_Settings.UserInterface.TableNav, tableNavVisualState, ref m_ScrollPosition, m_Settings.UserInterface.LockNames);
+			var highlightHeader = m_TableNav.UpdateFocusVisuals(m_PropertyTable, m_Settings.UserInterface.TableNav, tableNavVisualState, ref m_ScrollPosition, m_Settings.UserInterface.LockNames);
 
 			GUI.EndScrollView(true);
+
+			if (m_Settings.UserInterface.TableNav.HighlightSelectedColumn && highlightHeader)
+			{
+				var highlightColor = GUI.skin.button.focused.textColor;
+				highlightColor.a = m_Settings.UserInterface.TableNav.HighlightAlpha;
+				var focusedColumnHeaderRect = m_MultiColumnHeader.GetColumnRect(m_TableNav.VisualCoordinate.y);
+				focusedColumnHeaderRect.x -= m_ScrollPosition.x;
+				focusedColumnHeaderRect.y = columnHeaderRowRect.y;
+				EditorGUI.DrawRect(focusedColumnHeaderRect, highlightColor);
+			}
 
 			// Handle file actions after property table is drawn.
 			if (m_TableAction != TableAction.None)
@@ -1022,7 +1271,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			}
 			if (m_CachedVisibleColumns != null && m_CachedVisibleColumns.Length > 0)
 			{
-				m_MultiColumnHeaderState.visibleColumns = m_CachedVisibleColumns;
+				SetVisibleColumns(m_CachedVisibleColumns);
 				m_CachedVisibleColumns = null;
 			}
 
@@ -1042,10 +1291,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			var actionColumn = ColumnUtility.CreateActionsColumn($"{actionColumnLabel}Actions", width);
 			columns.Add(actionColumn);
 
-			var serializedObject = new SerializedObject(obj);
-
 			var isScriptableObject = IsScriptableObject();
-			var nameProperty = serializedObject.FindProperty(UnityConstants.Field.Name);
+
+			var serializedObject = new SerializedObject(obj);
+			var nameProperty = GetNameProperty(serializedObject);
 			var nameColumnLabel = ColumnUtility.GetColumnIndexLabel(m_Settings.UserInterface.ShowColumnIndex, columns.Count);
 			var nameColumn = ColumnUtility.CreatePropertyColumn(nameProperty, isScriptableObject, m_Settings.UserInterface.HeaderFormat, nameColumnLabel);
 			columns.Add(nameColumn);
@@ -1068,8 +1317,9 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			var includeChildren = true;
 			while (iterator.NextVisible(includeChildren))
 			{
-				includeChildren = m_Settings.UserInterface.ShowChildren;
-				if (iterator.IsPropertyVisible(m_Settings.UserInterface.ShowArrays, m_Settings.UserInterface.ShowReadOnly, out bool isReadOnly))
+				var useAssetReferenceDrawer = !m_Settings.UserInterface.ShowReadOnly && iterator.IsAssetReference();
+				includeChildren = m_Settings.UserInterface.ShowChildren && !useAssetReferenceDrawer;
+				if (useAssetReferenceDrawer || iterator.IsPropertyVisible(m_Settings.UserInterface.ShowArrays, m_Settings.UserInterface.ShowReadOnly, out bool isReadOnly))
 				{
 					if (m_Settings.UserInterface.OverrideArraySize && iterator.propertyType == SerializedPropertyType.ArraySize)
 					{
@@ -1101,14 +1351,31 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				};
 			}
 			m_MultiColumnHeader = new MultiColumnHeader(m_MultiColumnHeaderState);
-			m_MultiColumnHeader.ResizeToHeaderWidth(SheetLayout.InlineLabelSpacing);
-			m_MultiColumnHeader.sortedColumnIndex = 1;
+			TryRestoreTableLayout();
+#if UNITY_2021_2_OR_NEWER
+			// Raised when Column widths change.
+			m_MultiColumnHeader.columnSettingsChanged += OnColumnSettingsChanged;
+#endif
 			m_MultiColumnHeader.sortingChanged += OnSortingChanged;
+			m_MultiColumnHeader.visibleColumnsChanged += OnVisibleColumnsChanged;
 
 			// Cache to map column tooltip paths directly to an index.
 			m_MultiColumnTooltipPaths = m_MultiColumnHeaderState.columns
 				.Select((column, index) => new KeyValuePair<string, int>(column.headerContent.tooltip, index))
 				.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+		}
+
+		private SerializedProperty GetNameProperty(SerializedObject obj)
+		{
+			var nameProperty = obj.FindProperty(UnityConstants.Field.Name);
+			// For Components attached to a Prefab we need to get the Prefab GameObject before finding the property.
+			if (nameProperty == null && obj.targetObject is Component)
+			{
+				var targetComponent = (Component) obj.targetObject;
+				var parentSerializedObject = new SerializedObject(targetComponent.gameObject);
+				nameProperty = parentSerializedObject.FindProperty(UnityConstants.Field.Name);
+			}
+			return nameProperty;
 		}
 
 		private void SetTableAction(TableAction TableAction)
@@ -1117,7 +1384,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			{
 				// Temporarily restore all columns and cache current visible settings.
 				m_CachedVisibleColumns = m_MultiColumnHeaderState.visibleColumns;
-				m_MultiColumnHeaderState.visibleColumns = Enumerable.Range(0, m_Columns.Length).ToArray();
+				SetVisibleColumns(Enumerable.Range(0, m_Columns.Length).ToArray());
 			}
 			m_TableAction = TableAction;
 		}
@@ -1126,6 +1393,134 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		{
 			m_SortingChanged = true;
 			GUIUtility.keyboardControl = 0;
+			var tableLayout = GetTableLayout();
+			tableLayout.SortedColumnIndex = m_MultiColumnHeaderState.sortedColumnIndex;
+			tableLayout.IsSortedAscending = m_MultiColumnHeader.IsSortedAscending(m_MultiColumnHeaderState.sortedColumnIndex);
+		}
+
+		private void OnColumnSettingsChanged(int column)
+		{
+			CacheColumnLayout();
+		}
+
+		private void OnVisibleColumnsChanged(MultiColumnHeader multiColumnHeader)
+		{
+			CacheColumnLayout();
+		}
+
+		private void SetVisibleColumns(int[] visibleColumns)
+		{
+			m_MultiColumnHeaderState.visibleColumns = visibleColumns;
+			CacheColumnLayout();
+		}
+
+		private void CacheColumnLayout()
+		{
+			var tableLayout = GetTableLayout();
+			tableLayout.ColumnCount = m_MultiColumnHeaderState.columns.Length;
+			tableLayout.ColumnWidths = m_MultiColumnHeaderState.columns.Select(c => c.width).ToArray();
+			tableLayout.VisibleColumns = m_MultiColumnHeaderState.visibleColumns;
+		}
+
+		private void TryRestoreTableLayout()
+		{
+			var tableLayoutName = m_SelectedType.FullName;
+			if (!m_TableLayouts.TryGetValue(tableLayoutName, out TableLayout tableLayout))
+			{
+				m_MultiColumnHeader.ResizeToHeaderWidth(SheetLayout.InlineLabelSpacing);
+				m_MultiColumnHeader.sortedColumnIndex = 1;
+				return;
+			}
+
+			m_MultiColumnHeaderState.sortedColumnIndex = tableLayout.SortedColumnIndex;
+			if (tableLayout.SortedColumnIndex < m_MultiColumnHeaderState.columns.Length)
+			{
+				m_MultiColumnHeaderState.sortedColumnIndex = tableLayout.SortedColumnIndex;
+			}
+			else
+			{
+				m_MultiColumnHeaderState.sortedColumnIndex = 1;
+			}
+			m_SelectedMainAssetIndex = tableLayout.MainAssetIndex;
+			if (m_SelectedMainAssetIndex <= 0)
+			{
+				m_MultiColumnHeader.SetSortDirection(m_MultiColumnHeaderState.sortedColumnIndex, tableLayout.IsSortedAscending);
+			}
+			else
+			{
+				// Delay the call when there's a main asset index selected so the UI has time to update.
+				EditorApplication.delayCall += () => m_MultiColumnHeader.SetSortDirection(m_MultiColumnHeaderState.sortedColumnIndex, tableLayout.IsSortedAscending);
+			}
+
+			if (tableLayout.VisibleColumns == null || tableLayout.ColumnCount != m_MultiColumnHeaderState.columns.Length)
+			{
+				m_MultiColumnHeader.ResizeToHeaderWidth(SheetLayout.InlineLabelSpacing);
+				return;
+			}
+
+			m_MultiColumnHeaderState.visibleColumns = tableLayout.VisibleColumns;
+
+			if (tableLayout.ColumnWidths == null || tableLayout.ColumnCount != tableLayout.ColumnWidths.Length)
+			{
+				m_MultiColumnHeader.ResizeToHeaderWidth(SheetLayout.InlineLabelSpacing);
+				return;
+			}
+
+			for (var i = 0; i < tableLayout.ColumnCount; i++)
+			{
+				m_MultiColumnHeaderState.columns[i].width = tableLayout.ColumnWidths[i];
+			}
+		}
+
+		private TableLayout GetTableLayout()
+		{
+			var tableLayoutName = m_SelectedType.FullName;
+			if (!m_TableLayouts.TryGetValue(tableLayoutName, out var tableLayout))
+			{
+				tableLayout = new TableLayout();
+				m_TableLayouts.Add(tableLayoutName, tableLayout);
+			}
+			return tableLayout;
+		}
+
+		private async void DownloadGoogleSheetsDataAsync()
+		{
+			var selectedType = m_SelectedType;
+			var mainAsset = m_MainAsset;
+			var sheetName = m_GoogleSheetsImporter.SheetName;
+			var downloadUrl = m_GoogleSheetsImporter.Url;
+			m_ImportedFileContents = await m_GoogleSheetsImporter.GetCsvDataAsync();
+			if (!string.IsNullOrEmpty(m_ImportedFileContents))
+			{
+				Debug.Log($"Successfully downloaded '{sheetName}' CSV data from '{downloadUrl}'.");
+				if (selectedType == m_SelectedType)
+				{
+					if (mainAsset == m_MainAsset)
+					{
+						m_IsImportJson = false;
+						m_Settings.DataTransfer.SetRowDelimiter("\n");
+						m_Settings.DataTransfer.SetColumnDelimiter(",");
+						m_Settings.DataTransfer.WrapOption = WrapOption.DoubleQuotes;
+						m_Settings.DataTransfer.EscapeOption = EscapeOption.Repeat;
+						SetTableAction(TableAction.Import);
+					}
+					else
+					{
+						m_ImportedFileContents = string.Empty;
+						var newMainAssetName = m_MainAsset == null ? "null" : m_MainAsset.name;
+						Debug.LogWarning($"Selected main asset has changed. Expected {mainAsset.name} but was {newMainAssetName}. Google Sheets import will be ignored.");
+					}
+				}
+				else
+				{
+					m_ImportedFileContents = string.Empty;
+					Debug.LogWarning($"Selected type has changed. Expected {selectedType} but was {m_SelectedType}. Google Sheets import will be ignored.");
+				}
+			}
+			else
+			{
+				Debug.LogWarning($"Imported content cannot be null or empty.");
+			}
 		}
 
 		private FlatFileFormatSettings GetFlatFileFormatSettings()
@@ -1140,6 +1535,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 				UseStringEnums = m_Settings.DataTransfer.UseStringEnums,
 				IgnoreCase = m_Settings.DataTransfer.IgnoreCase,
 				WrapOption = m_Settings.DataTransfer.WrapOption,
+				EscapeOption = m_Settings.DataTransfer.EscapeOption,
+				CustomEscapeSequence = m_Settings.DataTransfer.GetCustomEscapeSequence(),
 			};
 			if (m_Settings.DataTransfer.Headers)
 			{
@@ -1154,11 +1551,90 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 
 		void IHasCustomMenu.AddItemsToMenu(GenericMenu menu)
 		{
-			menu.AddItem(SheetsContent.Window.ContextMenu.NewSheet, false, ShowWindow);
+			var alphanumComparer = new AlphanumComparer();
+			var windowSessionStates = m_Settings.SaveAndGetWindowSessionStates().OrderBy(s => s.Title, alphanumComparer).ThenBy(s => s.InstanceId).ToArray();
+			if (Instances.Count < windowSessionStates.Length)
+			{
+				menu.AddItem(SheetsContent.Window.ContextMenu.OpenRecentSheet, false, ShowWindow);
+			}
+			else
+			{
+				menu.AddDisabledItem(SheetsContent.Window.ContextMenu.OpenRecentSheet, false);
+			}
+			menu.AddItem(SheetsContent.Window.ContextMenu.NewSheet, false, NewSheet);
+			menu.AddItem(SheetsContent.Window.ContextMenu.RenameSheet, false, ShowRenameSheetPopup);
+			menu.AddSeparator(string.Empty);
+			var titleCounts = windowSessionStates.GroupBy(s => s.Title).ToDictionary(g => g.Key, g => g.Count());
+			foreach (var windowSessionState in windowSessionStates)
+			{
+				var isActiveInstance = Instances.Any(i => i.GetInstanceID() == windowSessionState.InstanceId);
+				var friendlyName = titleCounts[windowSessionState.Title] > 1 ? $"{windowSessionState.Title}/{windowSessionState.InstanceId}" : windowSessionState.Title;
+				// Cannot open or delete windows that are open in the Editor.
+				if (isActiveInstance)
+				{
+					menu.AddDisabledItem(SheetsContent.Window.ContextMenu.GetOpenSheetContent(friendlyName), false);
+					menu.AddDisabledItem(SheetsContent.Window.ContextMenu.GetDeleteSheetContent(friendlyName), false);
+				}
+				else
+				{
+					menu.AddItem(SheetsContent.Window.ContextMenu.GetOpenSheetContent(friendlyName), false, () => OpenSheet(windowSessionState));
+					menu.AddItem(SheetsContent.Window.ContextMenu.GetDeleteSheetContent(friendlyName), false, () => DeleteSheet(windowSessionState));
+				}
+				menu.AddItem(SheetsContent.Window.ContextMenu.GetCloneSheetContent(friendlyName), false, () => CloneSheet(windowSessionState));
+			}
+			menu.AddSeparator(string.Empty);
 			menu.AddItem(SheetsContent.Window.ContextMenu.NewPastePad, false, PastePadEditorWindow.ShowWindow);
 			menu.AddItem(SheetsContent.Window.ContextMenu.OpenSettings, false, ScriptableSheetsSettingsEditorWindow.ShowWindow);
+			menu.AddSeparator(string.Empty);
+			menu.AddItem(SheetsContent.Window.ContextMenu.EditColumnVisibility, false, ShowColumnVisibilityPopup);
+			menu.AddSeparator(string.Empty);
 			menu.AddItem(SheetsContent.Window.ContextMenu.Copy, false, () => SetTableAction(TableAction.Copy));
 			menu.AddItem(SheetsContent.Window.ContextMenu.CopyJson, false, () => SetTableAction(TableAction.CopyJson));
+		}
+
+		private void NewSheet()
+		{
+			s_IsNewWindowSessionState = true;
+			ShowWindow();
+		}
+
+		private void ShowRenameSheetPopup()
+		{
+			var anchoredRect = new Rect(position.position, PopupContent.Window.RenameSize);
+			var renamePopupWindow = new InputPopupWindowContent(anchoredRect, PopupContent.Label.Rename, titleContent.text, OnRenameConfirmed);
+			PopupWindow.Show(anchoredRect, renamePopupWindow);
+		}
+
+		private void OnRenameConfirmed(string input)
+		{
+			InitializeTitleContent(input);
+			Repaint();
+		}
+
+		private void OpenSheet(WindowSessionState windowSessionState)
+		{
+			s_NextWindowSessionStateToLoad = windowSessionState;
+			s_IsNextWindowSessionStateClone = false;
+			ShowWindow();
+		}
+
+		private void CloneSheet(WindowSessionState windowSessionState)
+		{
+			s_NextWindowSessionStateToLoad = windowSessionState;
+			s_IsNextWindowSessionStateClone = true;
+			ShowWindow();
+		}
+
+		private void DeleteSheet(WindowSessionState windowSessionState)
+		{
+			m_Settings.DeleteWindowSessionState(windowSessionState);
+		}
+
+		private void ShowColumnVisibilityPopup()
+		{
+			var anchoredRect = new Rect(position.position, PopupContent.Window.ColumnVisibilityMaxSize);
+			var columnLayoutPopupWindow = new ColumnVisibilityPopupWindowContent(anchoredRect, m_MultiColumnHeaderState, m_Settings.Workload.VisibleColumnLimit, SetVisibleColumns);
+			PopupWindow.Show(anchoredRect, columnLayoutPopupWindow);
 		}
 	}
 }

@@ -54,7 +54,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			m_VisibleColumnLimit = 40;
 		}
 
-		protected override void DrawProperties()
+		protected override void DrawProperties(SerializedObject target)
 		{
 			m_AutoSave = EditorGUILayout.Toggle(SettingsContent.Toggle.AutoSave, m_AutoSave);
 			m_AutoScan = EditorGUILayout.Toggle(SettingsContent.Toggle.AutoScan, m_AutoScan);

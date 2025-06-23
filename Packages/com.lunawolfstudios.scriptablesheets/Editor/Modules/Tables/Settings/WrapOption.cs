@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 {
 	public enum WrapOption
@@ -9,5 +11,21 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 		SquareBrackets = 4,
 		Parentheses = 5,
 		AngleBrackets = 6,
+	}
+
+	public static class WrapOptionExtensions
+	{
+		private static readonly HashSet<WrapOption> JsonSafeOptions = new HashSet<WrapOption>()
+		{
+			WrapOption.None,
+			WrapOption.SingleQuotes,
+			WrapOption.Parentheses,
+			WrapOption.AngleBrackets,
+		};
+
+		public static bool IsJsonUnsafe(this WrapOption wrapOption)
+		{
+			return !JsonSafeOptions.Contains(wrapOption);
+		}
 	}
 }

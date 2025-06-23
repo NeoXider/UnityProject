@@ -39,6 +39,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Comparables
 
 		public static IComparable GetPropertyComparable<TObject>(TObject obj, string propertyPath) where TObject : Object
 		{
+			if (propertyPath == UnityConstants.Field.Name)
+			{
+				return obj.name;
+			}
 			var serializedObject = new SerializedObject(obj);
 			var property = serializedObject.FindProperty(propertyPath);
 			if (property != null)
@@ -112,8 +116,35 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Comparables
 					case SerializedPropertyType.Gradient:
 						return (GradientComparable) property.GetGradientValue();
 
+					case SerializedPropertyType.Generic:
+						if (property.IsAssetReference())
+						{
+							var assetSubObjectName = property.FindPropertyRelative(UnityConstants.Field.AssetRefSubObjectName)?.stringValue;
+							if (string.IsNullOrEmpty(assetSubObjectName))
+							{
+								var assetGuid = property.FindPropertyRelative(UnityConstants.Field.AssetRefGuid)?.stringValue;
+								var assetPath = AssetDatabase.GUIDToAssetPath(assetGuid);
+								if (string.IsNullOrEmpty(assetGuid) || string.IsNullOrEmpty(assetPath))
+								{
+									return null;
+								}
+								else
+								{
+									var asset = AssetDatabase.LoadMainAssetAtPath(assetPath);
+									return asset == null ? null : asset.name;
+								}
+							}
+							else
+							{
+								return assetSubObjectName;
+							}
+						}
+						else
+						{
+							break;
+						}
+
 					default:
-						Debug.LogWarning($"Unsupported property type '{propertyType}' for property at path '{property.propertyPath}' for Object '{obj.name}'.");
 						break;
 				}
 			}

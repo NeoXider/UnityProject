@@ -1,3 +1,4 @@
+using UnityEditor;
 using UnityEngine;
 
 namespace LunaWolfStudiosEditor.ScriptableSheets
@@ -7,6 +8,6 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		bool Foldout { get; set; }
 		GUIContent FoldoutContent { get; }
 
-		void DrawGUI();
+		void DrawGUI(SerializedObject target);
 	}
 }

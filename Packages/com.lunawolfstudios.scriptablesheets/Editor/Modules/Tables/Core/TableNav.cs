@@ -9,10 +9,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 
 		public Vector2Int FocusedCoordinate { get; private set; }
 		public Vector2Int PreviousFocusedCoordinate { get; private set; }
+		public Vector2Int VisualCoordinate { get; private set; }
 		public bool FocusChanged { get; private set; }
 		public bool HasFocus { get; private set; }
 		public bool WasKeyboardNav { get; private set; }
 		public bool IsEditingTextField { get; private set; }
+		public Object SelectedRootObject { get; private set; }
 
 		/// <summary>
 		/// Attempts to find a coordinate within a specified property table using the name of the current focused control.
@@ -140,107 +142,122 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 			EditorGUIUtility.editingTextField = false;
 		}
 
-		public void UpdateFocusVisuals(Table<T> propertyTable, TableNavSettings settings, TableNavVisualState visualState, ref Vector2 scrollPosition, bool lockNames = false)
+		public bool UpdateFocusVisuals(Table<T> propertyTable, TableNavSettings settings, TableNavVisualState visualState, ref Vector2 scrollPosition, bool lockNames = false)
 		{
-			if (propertyTable.IsValidCoordinate(FocusedCoordinate) && HasFocus)
+			var visualCoordinateChanged = false;
+			// Account for the edge case where focus can change when scrolling.
+			if (propertyTable.IsValidCoordinate(FocusedCoordinate) && HasFocus && (WasKeyboardNav || !FocusChanged))
 			{
-				var needsSelectionBorder = false;
-				if (propertyTable.TryGet(FocusedCoordinate, out T property))
+				// Track when the visual coordinate changes for auto selection.
+				if (VisualCoordinate != FocusedCoordinate)
 				{
-					if (settings.AutoSelect && FocusChanged)
-					{
-						Selection.activeObject = property.RootObject;
-					}
-					needsSelectionBorder = property.NeedsSelectionBorder(lockNames);
+					VisualCoordinate = FocusedCoordinate;
+					visualCoordinateChanged = true;
 				}
-				var selectionColor = GUI.skin.settings.selectionColor;
-				var highlightColor = selectionColor;
-				highlightColor.a = settings.HighlightAlpha;
-				var focusedRowY = visualState.RowHeight * (FocusedCoordinate.x + 1);
-				if (settings.HighlightSelectedRow && propertyTable.Rows > 1)
+			}
+			else if (VisualCoordinate == Vector2Int.zero || !propertyTable.IsValidCoordinate(VisualCoordinate))
+			{
+				return false;
+			}
+			var needsSelectionBorder = false;
+			if (propertyTable.TryGet(VisualCoordinate, out T property))
+			{
+				// Do not auto reselect if the same exact cell for the same Object was reselected.
+				if (settings.AutoSelect && (visualCoordinateChanged || SelectedRootObject != property.RootObject))
 				{
-					var rowRect = new Rect(visualState.ColumnHeaderRowRect);
-					rowRect.width += scrollPosition.x;
-					rowRect.y += focusedRowY;
-					EditorGUI.DrawRect(rowRect, highlightColor);
+					SelectedRootObject = property.RootObject;
+					Selection.activeObject = property.RootObject;
 				}
-				var focusedColumnRect = visualState.MultiColumnHeader.GetColumnRect(FocusedCoordinate.y);
-				if (settings.HighlightSelectedColumn && propertyTable.Columns > 2)
-				{
-					focusedColumnRect.y = visualState.ColumnHeaderRowRect.y;
-					focusedColumnRect.height += visualState.RowHeight * propertyTable.Rows;
-					EditorGUI.DrawRect(focusedColumnRect, highlightColor);
-				}
-				var focusedCellRect = visualState.MultiColumnHeader.GetCellRect(FocusedCoordinate.y, new Rect(visualState.ColumnHeaderRowRect));
-				focusedCellRect.y += focusedRowY;
-				if (IsEditingTextField)
-				{
-					var borderThickness = 2;
-					var borderColor = selectionColor;
-					borderColor.b = 1.0f;
-					borderColor.a = 1.0f;
-					DrawBorder(focusedCellRect, borderThickness, borderColor);
-				}
-				else if (needsSelectionBorder)
-				{
-					var borderThickness = 1;
-					var borderColor = selectionColor;
-					borderColor.a = 1.0f;
-					DrawBorder(focusedCellRect, borderThickness, borderColor);
-				}
-				if (settings.AutoScroll && WasKeyboardNav)
-				{
-					var focusedCellEndX = focusedCellRect.x + focusedCellRect.width;
-					var focusedCellEndY = focusedCellRect.y + focusedCellRect.height;
+				needsSelectionBorder = property.NeedsSelectionBorder(lockNames);
+			}
+			var selectionColor = GUI.skin.settings.selectionColor;
+			var highlightColor = selectionColor;
+			highlightColor.a = settings.HighlightAlpha;
+			var focusedRowY = visualState.RowHeight * (VisualCoordinate.x + 1);
+			if (settings.HighlightSelectedRow && propertyTable.Rows > 1)
+			{
+				var rowRect = new Rect(visualState.ColumnHeaderRowRect);
+				rowRect.width += scrollPosition.x;
+				rowRect.y += focusedRowY;
+				EditorGUI.DrawRect(rowRect, highlightColor);
+			}
+			var focusedColumnRect = visualState.MultiColumnHeader.GetColumnRect(VisualCoordinate.y);
+			if (settings.HighlightSelectedColumn && propertyTable.Columns > 2)
+			{
+				focusedColumnRect.y = visualState.ColumnHeaderRowRect.y;
+				focusedColumnRect.height += visualState.RowHeight * propertyTable.Rows;
+				EditorGUI.DrawRect(focusedColumnRect, highlightColor);
+			}
+			var focusedCellRect = visualState.MultiColumnHeader.GetCellRect(VisualCoordinate.y, new Rect(visualState.ColumnHeaderRowRect));
+			focusedCellRect.y += focusedRowY;
+			if (IsEditingTextField)
+			{
+				var borderThickness = 2;
+				var borderColor = selectionColor;
+				borderColor.b = 1.0f;
+				borderColor.a = 1.0f;
+				DrawBorder(focusedCellRect, borderThickness, borderColor);
+			}
+			else if (needsSelectionBorder)
+			{
+				var borderThickness = 1;
+				var borderColor = selectionColor;
+				borderColor.a = 1.0f;
+				DrawBorder(focusedCellRect, borderThickness, borderColor);
+			}
+			if (settings.AutoScroll && WasKeyboardNav)
+			{
+				var focusedCellEndX = focusedCellRect.x + focusedCellRect.width;
+				var focusedCellEndY = focusedCellRect.y + focusedCellRect.height;
 
-					// Scrolling left.
-					if (focusedCellRect.x < visualState.ScrollStart.x)
+				// Scrolling left.
+				if (focusedCellRect.x < visualState.ScrollStart.x)
+				{
+					// Special case to show the Actions column when back on the first column.
+					if (VisualCoordinate.y > 1)
 					{
-						// Special case to show the Actions column when back on the first column.
-						if (FocusedCoordinate.y > 1)
-						{
-							scrollPosition.x = focusedColumnRect.x - visualState.ScrollViewArea.x;
-						}
-						else
-						{
-							scrollPosition.x = 0;
-						}
+						scrollPosition.x = focusedColumnRect.x - visualState.ScrollViewArea.x;
 					}
-					// Scrolling right.
-					else if (focusedCellEndX >= visualState.ScrollEnd.x)
+					else
 					{
-						scrollPosition.x = focusedCellEndX - visualState.ScrollViewArea.width - visualState.ScrollViewArea.x;
-						// Special case to scroll to the very right on the last column.
-						if (FocusedCoordinate.x >= propertyTable.Columns - 1)
-						{
-							// Adding row height is not ideal, but Unity doesn't provide a way to get the absolute maximum scroll position X.
-							scrollPosition.x += visualState.RowHeight;
-						}
+						scrollPosition.x = 0;
 					}
-					// Scrolling up.
-					if (focusedCellRect.y < visualState.ScrollStart.y)
+				}
+				// Scrolling right.
+				else if (focusedCellEndX >= visualState.ScrollEnd.x)
+				{
+					scrollPosition.x = focusedCellEndX - visualState.ScrollViewArea.width - visualState.ScrollViewArea.x;
+					// Special case to scroll to the very right on the last column.
+					if (VisualCoordinate.x >= propertyTable.Columns - 1)
 					{
-						if (FocusedCoordinate.x > 0)
-						{
-							scrollPosition.y = focusedCellRect.y - visualState.ScrollViewArea.y;
-						}
-						else
-						{
-							scrollPosition.y = 0;
-						}
+						// Adding row height is not ideal, but Unity doesn't provide a way to get the absolute maximum scroll position X.
+						scrollPosition.x += visualState.RowHeight;
 					}
-					// Scrolling down.
-					else if (focusedCellEndY >= visualState.ScrollEnd.y)
+				}
+				// Scrolling up.
+				if (focusedCellRect.y < visualState.ScrollStart.y)
+				{
+					if (VisualCoordinate.x > 0)
 					{
-						scrollPosition.y = focusedCellEndY - visualState.ScrollViewArea.height - visualState.ScrollViewArea.y + visualState.RowHeight;
-						// Special case to scroll to the very bottom on the last row.
-						if (FocusedCoordinate.x >= propertyTable.Rows - 1)
-						{
-							scrollPosition.y += visualState.RowHeight;
-						}
+						scrollPosition.y = focusedCellRect.y - visualState.ScrollViewArea.y;
+					}
+					else
+					{
+						scrollPosition.y = 0;
+					}
+				}
+				// Scrolling down.
+				else if (focusedCellEndY >= visualState.ScrollEnd.y)
+				{
+					scrollPosition.y = focusedCellEndY - visualState.ScrollViewArea.height - visualState.ScrollViewArea.y + visualState.RowHeight;
+					// Special case to scroll to the very bottom on the last row.
+					if (VisualCoordinate.x >= propertyTable.Rows - 1)
+					{
+						scrollPosition.y += visualState.RowHeight;
 					}
 				}
 			}
+			return true;
 		}
 
 		public string SetNextControlName(Table<T> propertyTable, int row, int column)

@@ -1,9 +1,32 @@
 using System;
+using System.Text;
 
 namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 {
 	public static class StringUtility
 	{
+		public static string DecodeBase64(this string text)
+		{
+			try
+			{
+				var bytes = Convert.FromBase64String(text);
+				var decodedText = Encoding.UTF8.GetString(bytes);
+				return decodedText;
+			}
+			catch (FormatException ex)
+			{
+				UnityEngine.Debug.LogWarning($"Error decoding '{text}'.\n{ex.Message}");
+			}
+			return text;
+		}
+
+		public static string EncodeBase64(this string text)
+		{
+			var bytes = Encoding.UTF8.GetBytes(text);
+			var encodedText = Convert.ToBase64String(bytes);
+			return encodedText;
+		}
+
 		public static string ExpandAll(this string text, int index, string type, int padding = 0)
 		{
 			return text.ExpandIndex(index, padding).ExpandType(type);

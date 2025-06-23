@@ -49,9 +49,23 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 		[TestCase("m_Bar.Array.data[0].m_Baz.m_Size", "Size", ExpectedResult = "Baz Size")]
 		[TestCase("m_Bar.Array.data[0].m_Baz.Array.size", "Size", ExpectedResult = "Baz Size")]
 		[TestCase("m_Foo.m_Bar.Array.data[0].m_Baz.Array.data[0].hello.Array.size", "Size", ExpectedResult = "Hello Size")]
+		[TestCase("<FooBar>k__BackingField", "Foo Bar", ExpectedResult = "Foo Bar")]
+		[TestCase("<Foo>k__BackingField.<Bar>k__BackingField", "Foo Bar", ExpectedResult = "Foo Bar")]
+		[TestCase("<Foo>k__BackingField.<Bar>k__BackingField.Array.data[0]", "Foo Bar", ExpectedResult = "Bar[0]")]
+		[TestCase("<Foo>k__BackingField.Array.data[0].<Bar>k__BackingField.Array.data[1]", "Foo Bar", ExpectedResult = "Foo[0] Bar[1]")]
 		public string FriendlyPropertyPathTests(string propertyPath, string displayName)
 		{
 			return SerializedPropertyUtility.FriendlyPropertyPath(propertyPath, displayName);
+		}
+
+		[TestCase("Sprite PPtr<$Sprite>", "Sprite")]
+		[TestCase("PPtr<Material PPtr<Material>", "Material")]
+		[TestCase("NoBracketsFound", "NoBracketsFound")]
+		[TestCase("", "")]
+		[TestCase("<>", "")]
+		public void FriendlyTypeTests(string type, string expected)
+		{
+			Assert.AreEqual(expected, SerializedPropertyUtility.FriendlyType(type));
 		}
 
 		[TestCase("m_Foo.Array.data[0]", ExpectedResult = true, TestName = "Path with array index should return true")]

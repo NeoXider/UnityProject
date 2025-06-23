@@ -17,6 +17,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 			public static readonly GUIContent Stretch = GetIconContent(EditorIcon.Stretch, $"Stretch to fit view area");
 			public static readonly GUIContent Compact = GetIconContent(EditorIcon.Compact, $"Compact to minimum width");
 			public static readonly GUIContent Expand = GetIconContent(EditorIcon.Expand, $"Expand to fit headers");
+			public static readonly GUIContent ImportGoogleSheetsCsv = GetIconContent(EditorIcon.Download, $"Import CSV from Google Sheets\n\nAssign Google Sheets Importers under Settings.");
 			public static readonly GUIContent ImportFile = GetIconContent(EditorIcon.Open, $"Import File");
 			public static readonly GUIContent CopyToClipboard = GetIconContent(EditorIcon.Copy, $"Copy to Clipboard");
 			public static readonly GUIContent CopyRowToClipboard = GetIconContent(EditorIcon.CopyX, $"Copy selected row to Clipboard");
@@ -84,15 +85,36 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 
 		public class Window
 		{
-			public static readonly GUIContent Title = GetIconContent(EditorIcon.ScriptableObject, "Scriptable Sheets", string.Empty);
+			public static GUIContent GetDefaultTitleContent()
+			{
+				return GetIconContent(EditorIcon.ScriptableObject, "Scriptable Sheets", string.Empty);
+			}
 
 			public class ContextMenu
 			{
-				public static readonly GUIContent NewSheet = new GUIContent("New Sheets Window");
+				public static readonly GUIContent OpenRecentSheet = new GUIContent("Open Recent Sheet");
+				public static readonly GUIContent NewSheet = new GUIContent("New Sheet");
+				public static readonly GUIContent RenameSheet = new GUIContent("Rename Sheet");
 				public static readonly GUIContent NewPastePad = new GUIContent("New Paste Pad Window");
 				public static readonly GUIContent OpenSettings = new GUIContent("Open Settings Window");
+				public static readonly GUIContent EditColumnVisibility = new GUIContent("Edit Column Visibility");
 				public static readonly GUIContent Copy = new GUIContent("Copy");
 				public static readonly GUIContent CopyJson = new GUIContent("Copy Json");
+
+				public static GUIContent GetOpenSheetContent(string sheetName)
+				{
+					return new GUIContent($"Open Sheet/{sheetName}");
+				}
+
+				public static GUIContent GetCloneSheetContent(string sheetName)
+				{
+					return new GUIContent($"Clone Sheet/{sheetName}");
+				}
+
+				public static GUIContent GetDeleteSheetContent(string sheetName)
+				{
+					return new GUIContent($"Delete Sheet/{sheetName}");
+				}
 			}
 		}
 	}

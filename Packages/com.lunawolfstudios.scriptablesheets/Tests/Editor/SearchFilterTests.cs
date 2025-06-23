@@ -385,9 +385,29 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 		[TestCase("m_MyRootObject.m_MyBool", "!=", "true", 2)]
 		[TestCase("m_MyRootObject.m_MyBool", "=", "1", 3)]
 		[TestCase("m_MyRootObject.m_MyBool", "!=", "1", 2)]
+		[TestCase("m_MyRootObject.m_MyString", "~=", "MyStr", 5)]
+		[TestCase("m_MyRootObject.m_MyString", "~!", "MyStr", 0)]
+		[TestCase("m_MyRootObject.m_MyString", "~=", "Str", 5)]
+		[TestCase("m_MyRootObject.m_MyString", "~!", "Str", 0)]
+		[TestCase("m_MyRootObject.m_MyString", "~=", "MyString3", 1)]
+		[TestCase("m_MyRootObject.m_MyString", "~!", "MyString3", 4)]
 		public void GetObjects_ByProperty(string propertyPath, string filterOperation, string filterValue, int expectedCount)
 		{
 			var result = SearchFilter.GetObjects($"property:{propertyPath}{filterOperation}{filterValue}", m_TempObjects, m_DefaultSearchSettings, false, false);
+			Assert.AreEqual(expectedCount, result.Count);
+		}
+
+		[TestCase("m_MyRootObject.m_MyString", "=~", "MyStr", 5)]
+		[TestCase("m_MyRootObject.m_MyString", "!~", "MyStr", 0)]
+		[TestCase("m_MyRootObject.m_MyString", "=~", "Str", 0)]
+		[TestCase("m_MyRootObject.m_MyString", "!~", "Str", 5)]
+		[TestCase("m_MyRootObject.m_MyString", "=~", "MyString3", 1)]
+		[TestCase("m_MyRootObject.m_MyString", "!~", "MyString3", 4)]
+		public void GetObjects_ByPropertyStartsWith(string propertyPath, string filterOperation, string filterValue, int expectedCount)
+		{
+			var newSearchSettings = m_DefaultSearchSettings;
+			newSearchSettings.StartsWith = true;
+			var result = SearchFilter.GetObjects($"property:{propertyPath}{filterOperation}{filterValue}", m_TempObjects, newSearchSettings, false, false);
 			Assert.AreEqual(expectedCount, result.Count);
 		}
 	}

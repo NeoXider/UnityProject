@@ -49,6 +49,13 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		public WrapOption WrapOption { get => m_WrapOption; set => m_WrapOption = value; }
 
 		[SerializeField]
+		private EscapeOption m_EscapeOption;
+		public EscapeOption EscapeOption { get => m_EscapeOption; set => m_EscapeOption = value; }
+
+		[SerializeField]
+		private string m_CustomEscapeSequence;
+
+		[SerializeField]
 		private JsonSerializationFormat m_JsonSerializationFormat;
 		public JsonSerializationFormat JsonSerializationFormat { get => m_JsonSerializationFormat; set => m_JsonSerializationFormat = value; }
 
@@ -67,6 +74,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			SetRowDelimiter(Environment.NewLine);
 			SetColumnDelimiter("\t");
 			m_WrapOption = WrapOption.None;
+			m_EscapeOption = EscapeOption.None;
+			m_CustomEscapeSequence = string.Empty;
 			m_JsonSerializationFormat = JsonSerializationFormat.Flat;
 		}
 
@@ -90,7 +99,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			m_ColumnDelimiter = value.GetEscapedText();
 		}
 
-		protected override void DrawProperties()
+		public string GetCustomEscapeSequence()
+		{
+			return m_CustomEscapeSequence.GetUnescapedText();
+		}
+
+		protected override void DrawProperties(SerializedObject target)
 		{
 			m_SmartPasteEnabled = EditorGUILayout.Toggle(SettingsContent.Toggle.SmartPaste, m_SmartPasteEnabled);
 			m_Headers = EditorGUILayout.Toggle(SettingsContent.Toggle.Headers, m_Headers);
@@ -107,6 +121,18 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			m_RowDelimiter = EditorGUILayout.TextField(SettingsContent.TextField.SmartPasteRowDelimiter, m_RowDelimiter);
 			m_ColumnDelimiter = EditorGUILayout.TextField(SettingsContent.TextField.SmartPasteColumnDelimiter, m_ColumnDelimiter);
 			m_WrapOption = (WrapOption) EditorGUILayout.EnumPopup(SettingsContent.Dropdown.WrapOption, m_WrapOption);
+			if (m_WrapOption != WrapOption.None)
+			{
+				SheetLayout.Indent();
+				m_EscapeOption = (EscapeOption) EditorGUILayout.EnumPopup(SettingsContent.Dropdown.EscapeOption, m_EscapeOption);
+				if (m_EscapeOption == EscapeOption.Custom)
+				{
+					SheetLayout.Indent();
+					m_CustomEscapeSequence = EditorGUILayout.TextField(SettingsContent.TextField.CustomEscapeSequence, m_CustomEscapeSequence);
+					SheetLayout.Unindent();
+				}
+				SheetLayout.Unindent();
+			}
 			m_JsonSerializationFormat = (JsonSerializationFormat) EditorGUILayout.EnumPopup(SettingsContent.Dropdown.JsonSerializationFormat, m_JsonSerializationFormat);
 		}
 	}

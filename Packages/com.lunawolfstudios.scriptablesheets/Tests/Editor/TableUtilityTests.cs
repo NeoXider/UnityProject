@@ -52,6 +52,75 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 		}
 
 		[Test]
+		public void FromFlatFileFormat_KeepsEmptyStrings()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = ",row1-col2\n,\n,row3-col2";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual(string.Empty, propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row1-col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row3-col2", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_KeepsEmptyStrings_WhenWrapped()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"\",\"\"row1-col2\"\"\n\"\",\"\"\n\"row3-col1\",\"\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual(string.Empty, propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("\"row1-col2\"", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row3-col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_KeepsEmptyStrings_WhenWrappedAndEscaped()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"\",\"\"\"row1-col2\"\"\"\n\"\",\"\"\n\"row3-col1\",\"\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+				EscapeOption = EscapeOption.Repeat,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual(string.Empty, propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("\"row1-col2\"", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row3-col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual(string.Empty, propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
 		public void FromFlatFileFormat_RemovesEmptyEntries()
 		{
 			var propertyTable = GetEmptyTable(3, 2);
@@ -163,7 +232,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 
 			Assert.AreEqual("row1-col1", propertyTable.Get(0, 0).GetProperty(formatSettings));
 			Assert.AreEqual("row1-col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
-			Assert.AreEqual("row2-col1", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row2-col1\",row2-col2\nrow3-col1,\"row3-col2", propertyTable.Get(1, 0).GetProperty(formatSettings));
 			Assert.AreEqual(string.Empty, propertyTable.Get(1, 1).GetProperty(formatSettings));
 			Assert.AreEqual(string.Empty, propertyTable.Get(2, 0).GetProperty(formatSettings));
 			Assert.AreEqual(string.Empty, propertyTable.Get(2, 1).GetProperty(formatSettings));
@@ -190,6 +259,149 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 			Assert.AreEqual("row2-col2", propertyTable.Get(1, 1).GetProperty(formatSettings));
 			Assert.AreEqual("row3-col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
 			Assert.AreEqual("row3-col2", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_UnwrapsValues_WithEscapeOptionBackslash()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"row1\\\"col1\",\"row1\\\"col2\"\n\"row2\\\"col1\",\"row2\\\"col2\"\n\"row3\\\"col1\",\"row3\\\"col2\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+				EscapeOption = EscapeOption.Backslash,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual("row1\"col1", propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row1\"col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col1", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col2", propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col2", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_UnwrapsValues_WithEscapeOptionRepeat()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"row1\"\"col1\",\"row1\"\"col2\"\n\"row2\"\"col1\",\"row2\"\"col2\"\n\"row3\"\"col1\",\"row3\"\"col2\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+				EscapeOption = EscapeOption.Repeat,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual("row1\"col1", propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row1\"col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col1", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col2", propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col2", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_UnwrapsAngleBrackets_WithEscapeOptionRepeat()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "<row1<<col1>,<row1>>col2>\n<row2<<>>col1>,<row2>><<col2>\n<<<row3-col1>>>,<>>row3-col2<<>";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.AngleBrackets,
+				EscapeOption = EscapeOption.Repeat,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual("row1<col1", propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row1>col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row2<>col1", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row2><col2", propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("<row3-col1>", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual(">row3-col2<", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_UnwrapsValues_WithEscapeOptionCustom()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"row1/e\"col1\",\"row1/e\"col2\"\n\"row2/e\"col1\",\"row2/e\"col2\"\n\"row3/e\"col1\",\"row3/e\"col2\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+				EscapeOption = EscapeOption.Custom,
+				CustomEscapeSequence = "/e",
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual("row1\"col1", propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row1\"col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col1", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col2", propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col2", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_UnwrapsValues_WhenContentHasWrapper()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"\",row1\"col1,\"\",\"row1\"col2\"\n\"row2\"col1\",\"row2\"col2\"\n\"row3\"col1\",\"\",row3\"col2,\"\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual("\",row1\"col1,\"", propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row1\"col2", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col1", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("row2\"col2", propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("row3\"col1", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual("\",row3\"col2,\"", propertyTable.Get(2, 1).GetProperty(formatSettings));
+		}
+
+		[Test]
+		public void FromFlatFileFormat_UnwrapsValues_WhenContentHasRowDelimiter()
+		{
+			var propertyTable = GetEmptyTable(3, 2);
+			var flatFileContent = "\"\nrow1\ncol1\n\",\"\nrow1\ncol2\n\"\n\"\nrow2\ncol1\n\",\"\nrow2\ncol2\n\"\n\"\nrow3\ncol1\n\",\"\nrow3\ncol2\n\"";
+
+			var formatSettings = new FlatFileFormatSettings()
+			{
+				RowDelimiter = "\n",
+				ColumnDelimiter = ",",
+				WrapOption = WrapOption.DoubleQuotes,
+			};
+
+			propertyTable.FromFlatFileFormat(flatFileContent, formatSettings);
+
+			Assert.AreEqual("\nrow1\ncol1\n", propertyTable.Get(0, 0).GetProperty(formatSettings));
+			Assert.AreEqual("\nrow1\ncol2\n", propertyTable.Get(0, 1).GetProperty(formatSettings));
+			Assert.AreEqual("\nrow2\ncol1\n", propertyTable.Get(1, 0).GetProperty(formatSettings));
+			Assert.AreEqual("\nrow2\ncol2\n", propertyTable.Get(1, 1).GetProperty(formatSettings));
+			Assert.AreEqual("\nrow3\ncol1\n", propertyTable.Get(2, 0).GetProperty(formatSettings));
+			Assert.AreEqual("\nrow3\ncol2\n", propertyTable.Get(2, 1).GetProperty(formatSettings));
 		}
 
 		[Test]
@@ -798,6 +1010,141 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 
 			settings.FirstColumnOnly = true;
 			expected = "\"B\"\n\"5\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+		}
+
+		[Test]
+		public void ToFlatFileFormat_ReturnsCorrectFormat_WithCustomSettingsAndEscapedContent()
+		{
+			var table = new Table<ITableProperty>(2, 3);
+			table.Set(0, 0, new TablePropertyMock("Object0", "myInt", "\"1\""));
+			table.Set(0, 1, new TablePropertyMock("Object0", "myInt", "\"2\""));
+			table.Set(0, 2, new TablePropertyMock("Object0", "myInt", "\"3\""));
+			table.Set(1, 0, new TablePropertyMock("Object1", "myInt", "\"4\""));
+			table.Set(1, 1, new TablePropertyMock("Object1", "myInt", "\"5\""));
+			table.Set(1, 2, new TablePropertyMock("Object1", "myInt", "\"6\""));
+
+			var settings = new FlatFileFormatSettings
+			{
+				FirstColumnIndex = 0,
+				FirstRowIndex = 0,
+				ColumnDelimiter = "|",
+				RowDelimiter = "\n",
+				WrapOption = WrapOption.None,
+				ColumnHeaders = new string[] { "A", "B", "C" }
+			};
+
+			var expected = "A|B|C\n\"1\"|\"2\"|\"3\"\n\"4\"|\"5\"|\"6\"";
+			var result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.WrapOption = WrapOption.DoubleQuotes;
+			expected = "\"A\"|\"B\"|\"C\"\n\"\"1\"\"|\"\"2\"\"|\"\"3\"\"\n\"\"4\"\"|\"\"5\"\"|\"\"6\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.EscapeOption = EscapeOption.Backslash;
+			expected = "\"A\"|\"B\"|\"C\"\n\"\\\"1\\\"\"|\"\\\"2\\\"\"|\"\\\"3\\\"\"\n\"\\\"4\\\"\"|\"\\\"5\\\"\"|\"\\\"6\\\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.EscapeOption = EscapeOption.Repeat;
+			expected = "\"A\"|\"B\"|\"C\"\n\"\"\"1\"\"\"|\"\"\"2\"\"\"|\"\"\"3\"\"\"\n\"\"\"4\"\"\"|\"\"\"5\"\"\"|\"\"\"6\"\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.EscapeOption = EscapeOption.Custom;
+			settings.CustomEscapeSequence = "/e";
+			expected = "\"A\"|\"B\"|\"C\"\n\"/e\"1/e\"\"|\"/e\"2/e\"\"|\"/e\"3/e\"\"\n\"/e\"4/e\"\"|\"/e\"5/e\"\"|\"/e\"6/e\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.EscapeOption = EscapeOption.None;
+			settings.FirstColumnIndex = 1;
+			expected = "\"B\"|\"C\"\n\"\"2\"\"|\"\"3\"\"\n\"\"5\"\"|\"\"6\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.FirstRowIndex = 1;
+			expected = "\"B\"|\"C\"\n\"\"5\"\"|\"\"6\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.FirstRowOnly = true;
+			expected = "\"B\"|\"C\"\n\"\"5\"\"|\"\"6\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.FirstColumnOnly = true;
+			expected = "\"B\"\n\"\"5\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+		}
+
+		[Test]
+		public void ToFlatFileFormat_ReturnsCorrectFormat_WithCustomSettingsAndEmptyData()
+		{
+			var table = new Table<ITableProperty>(2, 3);
+			table.Set(0, 0, new TablePropertyMock("Object0", "myInt", "1"));
+			table.Set(0, 1, new TablePropertyMock("Object0", "myInt", null));
+			table.Set(0, 2, new TablePropertyMock("Object0", "myInt", string.Empty));
+			table.Set(1, 0, new TablePropertyMock("Object1", "myInt", "4"));
+			table.Set(1, 1, new TablePropertyMock("Object1", "myInt", null));
+			table.Set(1, 2, new TablePropertyMock("Object1", "myInt", "6"));
+
+			var settings = new FlatFileFormatSettings
+			{
+				FirstColumnIndex = 0,
+				FirstRowIndex = 0,
+				ColumnDelimiter = "|",
+				RowDelimiter = "\n",
+				WrapOption = WrapOption.None,
+				ColumnHeaders = new string[] { "A", "B", "C" }
+			};
+
+			var expected = "A|B|C\n1||\n4||6";
+			var result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.WrapOption = WrapOption.DoubleQuotes;
+			expected = "\"A\"|\"B\"|\"C\"\n\"1\"|\"\"|\"\"\n\"4\"|\"\"|\"6\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+		}
+
+		[Test]
+		public void ToFlatFileFormat_ReturnsCorrectFormat_WithCustomSettingsAndEmptyDataAndEscapedContent()
+		{
+			var table = new Table<ITableProperty>(2, 3);
+			table.Set(0, 0, new TablePropertyMock("Object0", "myInt", "\"1\""));
+			table.Set(0, 1, new TablePropertyMock("Object0", "myInt", null));
+			table.Set(0, 2, new TablePropertyMock("Object0", "myInt", string.Empty));
+			table.Set(1, 0, new TablePropertyMock("Object1", "myInt", "\"4\""));
+			table.Set(1, 1, new TablePropertyMock("Object1", "myInt", null));
+			table.Set(1, 2, new TablePropertyMock("Object1", "myInt", "\"6\""));
+
+			var settings = new FlatFileFormatSettings
+			{
+				FirstColumnIndex = 0,
+				FirstRowIndex = 0,
+				ColumnDelimiter = "|",
+				RowDelimiter = "\n",
+				WrapOption = WrapOption.None,
+				ColumnHeaders = new string[] { "A", "B", "C" }
+			};
+
+			var expected = "A|B|C\n\"1\"||\n\"4\"||\"6\"";
+			var result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.WrapOption = WrapOption.DoubleQuotes;
+			expected = "\"A\"|\"B\"|\"C\"\n\"\"1\"\"|\"\"|\"\"\n\"\"4\"\"|\"\"|\"\"6\"\"";
+			result = table.ToFlatFileFormat(settings);
+			Assert.AreEqual(expected, result);
+
+			settings.EscapeOption = EscapeOption.Repeat;
+			expected = "\"A\"|\"B\"|\"C\"\n\"\"\"1\"\"\"|\"\"|\"\"\n\"\"\"4\"\"\"|\"\"|\"\"\"6\"\"\"";
 			result = table.ToFlatFileFormat(settings);
 			Assert.AreEqual(expected, result);
 		}

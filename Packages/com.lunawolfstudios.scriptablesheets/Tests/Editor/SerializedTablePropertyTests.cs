@@ -737,6 +737,17 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 		}
 
 		[Test]
+		public void SetProperty_ShouldSetAnimationCurve_Base64()
+		{
+			var propertyValue = "eyJtX0FuaW1hdGlvbkN1cnZlIjp7InNlcmlhbGl6ZWRWZXJzaW9uIjoiMiIsIm1fQ3VydmUiOlt7InNlcmlhbGl6ZWRWZXJzaW9uIjoiMyIsInRpbWUiOjAuMCwidmFsdWUiOjEuMCwiaW5TbG9wZSI6MC4wLCJvdXRTbG9wZSI6LTEuMCwidGFuZ2VudE1vZGUiOjAsIndlaWdodGVkTW9kZSI6MCwiaW5XZWlnaHQiOjAuMCwib3V0V2VpZ2h0IjowLjB9LHsic2VyaWFsaXplZFZlcnNpb24iOiIzIiwidGltZSI6MS4wLCJ2YWx1ZSI6MC4wLCJpblNsb3BlIjotMS4wLCJvdXRTbG9wZSI6MC4wLCJ0YW5nZW50TW9kZSI6MCwid2VpZ2h0ZWRNb2RlIjowLCJpbldlaWdodCI6MC4wLCJvdXRXZWlnaHQiOjAuMH1dLCJtX1ByZUluZmluaXR5IjoyLCJtX1Bvc3RJbmZpbml0eSI6MiwibV9Sb3RhdGlvbk9yZGVyIjo0fX0=";
+			var formatSettings = m_FormatSettings;
+			formatSettings.WrapOption = WrapOption.DoubleQuotes;
+			m_MyAnimationCurveProperty.SetProperty(propertyValue, formatSettings);
+			var expectedValue = AnimationCurve.Linear(0, 1, 1, 0);
+			Assert.AreEqual(expectedValue, m_MyScriptableObject.myAnimationCurve);
+		}
+
+		[Test]
 		public void SetProperty_IgnoresSetAnimationCurve_WhenJSON_IsInvalid()
 		{
 			var expectedValue = AnimationCurve.Linear(1, 1, 1, 1);
@@ -763,6 +774,22 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.EditorTests
 		{
 			var propertyValue = "{\"m_Gradient\":{\"serializedVersion\":\"2\",\"key0\":{\"r\":0.0,\"g\":0.0,\"b\":1.0,\"a\":1.0},\"key1\":{\"r\":1.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"key2\":{\"r\":0.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"key3\":{\"r\":0.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"key4\":{\"r\":0.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"key5\":{\"r\":0.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"key6\":{\"r\":0.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"key7\":{\"r\":0.0,\"g\":0.0,\"b\":0.0,\"a\":0.0},\"ctime0\":0,\"ctime1\":65535,\"ctime2\":0,\"ctime3\":0,\"ctime4\":0,\"ctime5\":0,\"ctime6\":0,\"ctime7\":0,\"atime0\":0,\"atime1\":65535,\"atime2\":0,\"atime3\":0,\"atime4\":0,\"atime5\":0,\"atime6\":0,\"atime7\":0,\"m_Mode\":0,\"m_ColorSpace\":-1,\"m_NumColorKeys\":2,\"m_NumAlphaKeys\":2}}";
 			m_MyGradientProperty.SetProperty(propertyValue, m_FormatSettings);
+			var expectedValue = new Gradient();
+			expectedValue.SetKeys
+			(
+				new GradientColorKey[] { new GradientColorKey(Color.blue, 0.0f), new GradientColorKey(Color.red, 1.0f) },
+				new GradientAlphaKey[] { new GradientAlphaKey(1.0f, 0.0f), new GradientAlphaKey(0.0f, 1.0f) }
+			);
+			Assert.AreEqual(expectedValue, m_MyScriptableObject.myGradient);
+		}
+
+		[Test]
+		public void SetProperty_ShouldSetGradient_Base64()
+		{
+			var propertyValue = "eyJtX0dyYWRpZW50Ijp7InNlcmlhbGl6ZWRWZXJzaW9uIjoiMiIsImtleTAiOnsiciI6MC4wLCJnIjowLjAsImIiOjEuMCwiYSI6MS4wfSwia2V5MSI6eyJyIjoxLjAsImciOjAuMCwiYiI6MC4wLCJhIjowLjB9LCJrZXkyIjp7InIiOjAuMCwiZyI6MC4wLCJiIjowLjAsImEiOjAuMH0sImtleTMiOnsiciI6MC4wLCJnIjowLjAsImIiOjAuMCwiYSI6MC4wfSwia2V5NCI6eyJyIjowLjAsImciOjAuMCwiYiI6MC4wLCJhIjowLjB9LCJrZXk1Ijp7InIiOjAuMCwiZyI6MC4wLCJiIjowLjAsImEiOjAuMH0sImtleTYiOnsiciI6MC4wLCJnIjowLjAsImIiOjAuMCwiYSI6MC4wfSwia2V5NyI6eyJyIjowLjAsImciOjAuMCwiYiI6MC4wLCJhIjowLjB9LCJjdGltZTAiOjAsImN0aW1lMSI6NjU1MzUsImN0aW1lMiI6MCwiY3RpbWUzIjowLCJjdGltZTQiOjAsImN0aW1lNSI6MCwiY3RpbWU2IjowLCJjdGltZTciOjAsImF0aW1lMCI6MCwiYXRpbWUxIjo2NTUzNSwiYXRpbWUyIjowLCJhdGltZTMiOjAsImF0aW1lNCI6MCwiYXRpbWU1IjowLCJhdGltZTYiOjAsImF0aW1lNyI6MCwibV9Nb2RlIjowLCJtX0NvbG9yU3BhY2UiOi0xLCJtX051bUNvbG9yS2V5cyI6MiwibV9OdW1BbHBoYUtleXMiOjJ9fQ==";
+			var formatSettings = m_FormatSettings;
+			formatSettings.WrapOption = WrapOption.DoubleQuotes;
+			m_MyGradientProperty.SetProperty(propertyValue, formatSettings);
 			var expectedValue = new Gradient();
 			expectedValue.SetKeys
 			(

@@ -105,10 +105,17 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 						break;
 
 					case SerializedPropertyType.ObjectReference:
-						var objectType = ReflectionUtility.GetNestedFieldType(rootObject.GetType(), property.propertyPath);
-						if (objectType != null)
+						if (!IsDefaultUnityEngineType(rootObject))
 						{
-							property.objectReferenceValue = EditorGUI.ObjectField(propertyRect, property.objectReferenceValue, objectType, false);
+							var objectType = ReflectionUtility.GetNestedFieldType(rootObject.GetType(), property.propertyPath);
+							if (objectType != null)
+							{
+								property.objectReferenceValue = EditorGUI.ObjectField(propertyRect, property.objectReferenceValue, objectType, false);
+							}
+							else
+							{
+								EditorGUI.PropertyField(propertyRect, property, GUIContent.none, false);
+							}
 						}
 						else
 						{
@@ -121,7 +128,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 						break;
 
 					case SerializedPropertyType.Enum:
-						if (property.TryGetEnumType(rootObject, out Type enumType))
+						if (!IsDefaultUnityEngineType(rootObject, out string fullTypeName) && (!fullTypeName.StartsWith(UnityConstants.Type.TMPro) || IsAlignmentProperty(property.propertyPath)) && property.TryGetEnumType(rootObject, out Type enumType))
 						{
 							if (enumType.HasFlagsAttribute())
 							{
@@ -142,6 +149,15 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 								property.intValue = Convert.ToInt32(EditorGUI.EnumPopup(propertyRect, (Enum) Enum.ToObject(enumType, property.intValue)));
 							}
 						}
+						else
+						{
+							// Special case for UnityEngine.UI.Slider Component to remove extra space when rendering the Direction property.
+							if (fullTypeName == UnityConstants.Type.UnityEngineUISlider && property.propertyPath == UnityConstants.Field.Direction)
+							{
+								propertyRect.y -= 8;
+							}
+							EditorGUI.PropertyField(propertyRect, property, GUIContent.none, false);
+						}
 						break;
 
 					case SerializedPropertyType.Character:
@@ -161,6 +177,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 						property.SetGradientValue(EditorGUI.GradientField(propertyRect, gradientValue));
 						break;
 
+					case SerializedPropertyType.Generic:
 					default:
 						EditorGUI.PropertyField(propertyRect, property, GUIContent.none, false);
 						break;
@@ -193,6 +210,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 						if (property.propertyType == SerializedPropertyType.Boolean)
 						{
 							property.boolValue = DrawUtility.GUI.ToggleCenter(propertyRect, property.boolValue);
+						}
+						else if (property.propertyType == SerializedPropertyType.String)
+						{
+							property.stringValue = EditorGUI.TextField(propertyRect, property.stringValue);
 						}
 						else
 						{
@@ -254,6 +275,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 						}
 					}
 					friendlyPath = friendlyPath.Replace('.', ' ').Trim();
+					friendlyPath = Regex.Replace(friendlyPath, @"<([^>]+)>k__BackingField", "$1");
 					friendlyPath = Regex.Replace(friendlyPath, @"(\p{Ll})(\p{Lu})", "$1 $2");
 					friendlyPath = Regex.Replace(friendlyPath, @"\b[a-z]", c => c.Value.ToUpper());
 					if (!string.IsNullOrEmpty(friendlyPath))
@@ -265,9 +287,24 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 			return displayName;
 		}
 
+		// Needs to handle edge cases like:
+		//  Sprite PPtr<$Sprite>
+		//  PPtr<Material PPtr<Material>
+		public static string FriendlyType(string type)
+		{
+			var lastOpen = type.LastIndexOf('<');
+			var lastClose = type.LastIndexOf('>');
+			if (lastOpen != -1 && lastClose != -1 && lastOpen < lastClose)
+			{
+				var lastValue = type.Substring(lastOpen + 1, lastClose - lastOpen - 1);
+				return lastValue.Replace("$", string.Empty);
+			}
+			return type;
+		}
+
 		public static string FriendlyType(this SerializedProperty property)
 		{
-			return property.type.Replace("PPtr<$", string.Empty).Replace(">", string.Empty);
+			return FriendlyType(property.type);
 		}
 
 		public static string GetFloatStringValue(this SerializedProperty property)
@@ -467,6 +504,11 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 			return propertyPath.Contains('[');
 		}
 
+		public static bool IsAssetReference(this SerializedProperty property)
+		{
+			return property.type.Contains(UnityConstants.Type.AssetReference) && property.FindPropertyRelative(UnityConstants.Field.AssetRefGuid) != null;
+		}
+
 		public static bool IsInputFieldProperty(this SerializedProperty property, bool isScriptableObject)
 		{
 			var propertyType = property.GetSheetsPropertyType(isScriptableObject);
@@ -529,6 +571,24 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Shared
 				Debug.LogWarning($"Property on {nameof(Object)} {rootObject.name} at path {enumPropertyPath} is not a valid type of enum.");
 				return false;
 			}
+		}
+
+		// Various default Unity Engine Components have different limitations on how backing fields are serialized and accessed.
+		private static bool IsDefaultUnityEngineType(Object rootObject)
+		{
+			return IsDefaultUnityEngineType(rootObject, out string fullTypeName);
+		}
+
+		private static bool IsDefaultUnityEngineType(Object rootObject, out string fullTypeName)
+		{
+			fullTypeName = rootObject.GetType().FullName;
+			return fullTypeName.StartsWith(UnityConstants.Type.UnityEngine);
+		}
+
+		// Handle special case for TMPro alignment enum properties.
+		private static bool IsAlignmentProperty(string propertyPath)
+		{
+			return propertyPath == UnityConstants.Field.HorizontalAlignment || propertyPath == UnityConstants.Field.VerticalAlignment || propertyPath == UnityConstants.Field.TextAlignment;
 		}
 	}
 }

@@ -2,6 +2,8 @@ using LunaWolfStudiosEditor.ScriptableSheets.Serializables;
 using LunaWolfStudiosEditor.ScriptableSheets.Shared;
 using Newtonsoft.Json;
 using System;
+using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -12,6 +14,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 	{
 		public const string NullObjectValue = "null";
 		private const char AssetDelimiter = '&';
+		// Sub Asset names can contain special chars, so use a unique string.
+		private const string SubAssetDelimiter = "&SUBASSET#";
 
 		private readonly Object m_RootObject;
 		public Object RootObject => m_RootObject;
@@ -47,6 +51,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 		public string GetProperty(FlatFileFormatSettings formatSettings)
 		{
 			var property = GetSerializedProperty();
+			if (property.propertyPath == UnityConstants.Field.Name)
+			{
+				return m_RootObject.name;
+			}
 			switch (property.propertyType)
 			{
 				case SerializedPropertyType.Integer:
@@ -68,7 +76,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					return property.intValue.ToString();
 
 				case SerializedPropertyType.Enum:
-					if (formatSettings.UseStringEnums && property.TryGetEnumType(m_RootObject, out Type enumType))
+					if (!IsDefaultUnityEngineType(property.serializedObject) && formatSettings.UseStringEnums && property.TryGetEnumType(m_RootObject, out Type enumType))
 					{
 						if (!enumType.HasFlagsAttribute())
 						{
@@ -99,10 +107,43 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					return ((char) property.intValue).ToString();
 
 				case SerializedPropertyType.AnimationCurve:
-					return JsonUtility.ToJson(new SerializableAnimationCurve(property));
+					var animationCurveJson = JsonUtility.ToJson(new SerializableAnimationCurve(property));
+					if (formatSettings.WrapOption.IsJsonUnsafe())
+					{
+						return animationCurveJson.EncodeBase64();
+					}
+					else
+					{
+						return animationCurveJson;
+					}
 
 				case SerializedPropertyType.Gradient:
-					return JsonUtility.ToJson(new SerializableGradient(property));
+					var gradientJson = JsonUtility.ToJson(new SerializableGradient(property));
+					if (formatSettings.WrapOption.IsJsonUnsafe())
+					{
+						return gradientJson.EncodeBase64();
+					}
+					else
+					{
+						return gradientJson;
+					}
+
+				case SerializedPropertyType.Generic:
+					if (property.IsAssetReference())
+					{
+						var assetGuid = property.FindPropertyRelative(UnityConstants.Field.AssetRefGuid)?.stringValue;
+						var subObjectName = property.FindPropertyRelative(UnityConstants.Field.AssetRefSubObjectName)?.stringValue;
+						if (string.IsNullOrEmpty(assetGuid))
+						{
+							return NullObjectValue;
+						}
+						return $"{assetGuid}{SubAssetDelimiter}{subObjectName}";
+					}
+					else
+					{
+						Debug.LogWarning($"Unsupported generic property type for property at path {PropertyPath}.");
+						return string.Empty;
+					}
 
 				default:
 					Debug.LogWarning($"Unsupported property type {property.propertyType} for property at path {PropertyPath}.");
@@ -145,7 +186,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 						break;
 
 					case SerializedPropertyType.Enum:
-						if (formatSettings.UseStringEnums)
+						if (!IsDefaultUnityEngineType(serializedObject) && formatSettings.UseStringEnums)
 						{
 							if (property.TryGetEnumType(m_RootObject, out Type enumType))
 							{
@@ -210,14 +251,28 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					case SerializedPropertyType.String:
 						if (property.name == UnityConstants.Field.Name)
 						{
-							if (value != m_RootObject.name)
+							if (!value.Any(c => Path.GetInvalidFileNameChars().Contains(c)))
 							{
-								var assetPath = AssetDatabase.GetAssetPath(m_RootObject);
-								var assetRenameResponse = AssetDatabase.RenameAsset(assetPath, value);
-								if (!string.IsNullOrEmpty(assetRenameResponse))
+								if (value != m_RootObject.name)
 								{
-									LogParseWarning(value, propertyType, assetRenameResponse);
+									var assetPath = AssetDatabase.GetAssetPath(m_RootObject);
+									if (assetPath.Contains($"/{m_RootObject.name}."))
+									{
+										var assetRenameResponse = AssetDatabase.RenameAsset(assetPath, value);
+										if (!string.IsNullOrEmpty(assetRenameResponse))
+										{
+											LogParseWarning(value, propertyType, assetRenameResponse);
+										}
+									}
+									else
+									{
+										m_RootObject.name = value;
+									}
 								}
+							}
+							else
+							{
+								Debug.LogWarning($"Invalid filename '{value}'.");
 							}
 						}
 						else
@@ -315,15 +370,36 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 								}
 								else
 								{
-									// Certain Object types like Sprite require the Type to be explicit when loading from an asset path.
-									var objectType = ReflectionUtility.GetNestedFieldType(m_RootObject.GetType(), property.propertyPath);
-									if (objectType != null)
+									if (!IsDefaultUnityEngineType(serializedObject))
 									{
-										property.objectReferenceValue = AssetDatabase.LoadAssetAtPath(assetPath, objectType);
+										// Certain Object types like Sprite as well as Sub Assets require the Type to be explicit when loading from an asset path.
+										var objectType = ReflectionUtility.GetNestedFieldType(m_RootObject.GetType(), property.propertyPath);
+										if (objectType != null)
+										{
+											property.objectReferenceValue = AssetDatabase.LoadAssetAtPath(assetPath, objectType);
+										}
+										else
+										{
+											property.objectReferenceValue = AssetDatabase.LoadAssetAtPath(assetPath, typeof(Object));
+										}
 									}
 									else
 									{
 										property.objectReferenceValue = AssetDatabase.LoadAssetAtPath(assetPath, typeof(Object));
+									}
+
+									// If we still haven't found the exact Object then see if it's a Sub Asset. This can occur with TMPro shared material assets and child GameObjects.
+									if (parts.Length > 1 && (property.objectReferenceValue == null || property.objectReferenceValue.name != parts[1]))
+									{
+										foreach (var subAsset in AssetDatabase.LoadAllAssetsAtPath(assetPath))
+										{
+											property.objectReferenceValue = subAsset;
+											// Validate the asset names match up if possible.
+											if (property.objectReferenceValue != null && property.objectReferenceValue.name == parts[1])
+											{
+												break;
+											}
+										}
 									}
 								}
 							}
@@ -350,6 +426,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 						break;
 
 					case SerializedPropertyType.AnimationCurve:
+						if (formatSettings.WrapOption.IsJsonUnsafe())
+						{
+							value = value.DecodeBase64();
+						}
 						// Handle case where user might copy from the inspector.
 						value = value.Replace("UnityEditor.AnimationCurveWrapperJSON:{\"c", "{\"m_AnimationC");
 						try
@@ -364,6 +444,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 						break;
 
 					case SerializedPropertyType.Gradient:
+						if (formatSettings.WrapOption.IsJsonUnsafe())
+						{
+							value = value.DecodeBase64();
+						}
 						// Handle case where user might copy from the inspector.
 						value = value.Replace("UnityEditor.GradientWrapperJSON:{\"g", "{\"m_G");
 						try
@@ -374,6 +458,69 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 						catch (Exception ex)
 						{
 							LogParseWarning(value, propertyType, ex.Message);
+						}
+						break;
+
+					case SerializedPropertyType.Generic:
+						if (property.IsAssetReference())
+						{
+							var guidProperty = property.FindPropertyRelative(UnityConstants.Field.AssetRefGuid);
+							var subObjectNameProperty = property.FindPropertyRelative(UnityConstants.Field.AssetRefSubObjectName);
+							var subObjectTypeProperty = property.FindPropertyRelative(UnityConstants.Field.AssetRefSubObjectType);
+							if (guidProperty != null && subObjectNameProperty != null && subObjectTypeProperty != null)
+							{
+								// Remove line endings to avoid creating sub asset references when pasting content.
+								value = value.Replace("\r", string.Empty).Replace("\n", string.Empty);
+								if (value.Length > 0 && value != NullObjectValue)
+								{
+									var parts = value.Split(new string[] { SubAssetDelimiter }, StringSplitOptions.None);
+									var assetGuid = parts[0];
+									var assetPath = AssetDatabase.GUIDToAssetPath(assetGuid);
+									if (!string.IsNullOrEmpty(assetPath))
+									{
+										if (parts.Length > 1 && !string.IsNullOrEmpty(parts[1]))
+										{
+											var assetName = parts[1];
+											var subAssets = AssetDatabase.LoadAllAssetRepresentationsAtPath(assetPath);
+											var subObject = subAssets.FirstOrDefault(s => s.name == assetName);
+											if (subObject != null)
+											{
+												guidProperty.stringValue = assetGuid;
+												subObjectNameProperty.stringValue = assetName;
+												subObjectTypeProperty.stringValue = subObject.GetType().AssemblyQualifiedName;
+											}
+											else
+											{
+												LogParseWarning(value, propertyType, $"Failed to find sub asset '{assetName}' at path '{assetPath}'.");
+											}
+										}
+										else
+										{
+											guidProperty.stringValue = assetGuid;
+											subObjectNameProperty.stringValue = string.Empty;
+											subObjectTypeProperty.stringValue = string.Empty;
+										}
+									}
+									else
+									{
+										LogParseWarning(value, propertyType, $"Failed to find asset with GUID '{assetGuid}'.");
+									}
+								}
+								else
+								{
+									guidProperty.stringValue = string.Empty;
+									subObjectNameProperty.stringValue = string.Empty;
+									subObjectTypeProperty.stringValue = string.Empty;
+								}
+							}
+							else
+							{
+								LogParseWarning(value, propertyType, $"Unsupported type of {UnityConstants.Type.AssetReference}. Unable to find {UnityConstants.Type.AssetReference} properties.");
+							}
+						}
+						else
+						{
+							LogParseWarning(value, propertyType, "Unsupported Property Type.");
 						}
 						break;
 
@@ -414,6 +561,12 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 			// Name property is readonly on certain fields like Enum TextAssets.
 			var isNameProperty = property.propertyPath == UnityConstants.Field.Name;
 			return (!isNameProperty && property.IsReadOnly() || (isNameProperty && lockNames)) || property.propertyType == SerializedPropertyType.AnimationCurve || property.propertyType == SerializedPropertyType.Gradient;
+		}
+
+		// Various default Unity Engine Components have different limitations on how backing fields are serialized and accessed.
+		private static bool IsDefaultUnityEngineType(SerializedObject serializedObject)
+		{
+			return serializedObject.targetObject.GetType().FullName.StartsWith(UnityConstants.Type.UnityEngine);
 		}
 	}
 }

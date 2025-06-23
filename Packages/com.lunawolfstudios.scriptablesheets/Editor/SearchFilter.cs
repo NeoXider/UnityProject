@@ -9,12 +9,12 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
+namespace LunaWolfStudiosEditor.ScriptableSheets
 {
 	public static class SearchFilter
 	{
 		private const char FilterDelimiter = ':';
-		private const string FilterPattern = @"([\w\.\[\]]+)([><=!]=?|<=?)(.+)";
+		private const string FilterPattern = @"([\w\.\[\]]+)(==|!=|~=|=~|!~|~!|<=|>=|<|>|=)(.+)";
 
 		public static List<Object> GetObjects(string input, List<Object> objs, SearchSettings settings, bool useStringEnums, bool ignoreEnumCasing)
 		{
@@ -57,7 +57,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 													// Handle mismatched enum names gracefully.
 												}
 											}
-											return objs.Where(obj => MatchesPropertyFilter(obj, propertyPath, filterValue, filterOperation)).ToList();
+											return objs.Where(obj => MatchesPropertyFilter(obj, propertyPath, filterValue, filterOperation, settings)).ToList();
 										}
 									}
 								}
@@ -86,7 +86,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 			return objs;
 		}
 
-		private static bool MatchesPropertyFilter(Object obj, string propertyPath, string filterValue, string filterOperation)
+		private static bool MatchesPropertyFilter(Object obj, string propertyPath, string filterValue, string filterOperation, SearchSettings settings)
 		{
 			var propertyValue = ComparableUtility.GetPropertyComparable(obj, propertyPath);
 			if (propertyValue == null)
@@ -105,11 +105,11 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case int propertyIntValue:
 					if (int.TryParse(filterValue, out int intValue))
 					{
-						return MatchesFilterOperation(propertyIntValue, intValue, filterOperation);
+						return MatchesFilterOperation(propertyIntValue, intValue, filterOperation, settings);
 					}
 					else if (filterValue.Length == 1)
 					{
-						return MatchesFilterOperation(propertyIntValue, filterValue[0], filterOperation);
+						return MatchesFilterOperation(propertyIntValue, filterValue[0], filterOperation, settings);
 					}
 					else
 					{
@@ -119,7 +119,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case long propertyLongValue:
 					if (long.TryParse(filterValue, out long longValue))
 					{
-						return MatchesFilterOperation(propertyLongValue, longValue, filterOperation);
+						return MatchesFilterOperation(propertyLongValue, longValue, filterOperation, settings);
 					}
 					else
 					{
@@ -130,7 +130,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case uint propertyUIntValue:
 					if (uint.TryParse(filterValue, out uint uintValue))
 					{
-						return MatchesFilterOperation(propertyUIntValue, uintValue, filterOperation);
+						return MatchesFilterOperation(propertyUIntValue, uintValue, filterOperation, settings);
 					}
 					else
 					{
@@ -140,7 +140,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case ulong propertyULongValue:
 					if (ulong.TryParse(filterValue, out ulong ulongValue))
 					{
-						return MatchesFilterOperation(propertyULongValue, ulongValue, filterOperation);
+						return MatchesFilterOperation(propertyULongValue, ulongValue, filterOperation, settings);
 					}
 					else
 					{
@@ -150,11 +150,11 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case bool propertyBoolValue:
 					if (bool.TryParse(filterValue, out bool boolValue))
 					{
-						return MatchesFilterOperation(propertyBoolValue, boolValue, filterOperation);
+						return MatchesFilterOperation(propertyBoolValue, boolValue, filterOperation, settings);
 					}
 					else if (int.TryParse(filterValue, out int boolIntValue))
 					{
-						return MatchesFilterOperation(propertyBoolValue, boolIntValue >= 1, filterOperation);
+						return MatchesFilterOperation(propertyBoolValue, boolIntValue >= 1, filterOperation, settings);
 					}
 					else
 					{
@@ -164,7 +164,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case float propertyFloatValue:
 					if (float.TryParse(filterValue, out float floatValue))
 					{
-						return MatchesFilterOperation(propertyFloatValue, floatValue, filterOperation);
+						return MatchesFilterOperation(propertyFloatValue, floatValue, filterOperation, settings);
 					}
 					else
 					{
@@ -174,7 +174,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 				case double propertyDoubleValue:
 					if (double.TryParse(filterValue, out double doubleValue))
 					{
-						return MatchesFilterOperation(propertyDoubleValue, doubleValue, filterOperation);
+						return MatchesFilterOperation(propertyDoubleValue, doubleValue, filterOperation, settings);
 					}
 					else
 					{
@@ -182,7 +182,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					}
 
 				case string propertyStringValue:
-					return MatchesFilterOperation(propertyStringValue, filterValue, filterOperation);
+					return MatchesFilterOperation(propertyStringValue, filterValue, filterOperation, settings);
 
 				case ColorComparable propertyColorValue:
 					if (!filterValue.StartsWith("#"))
@@ -191,7 +191,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					}
 					if (ColorUtility.TryParseHtmlString(filterValue, out Color colorValue))
 					{
-						return MatchesFilterOperation(propertyColorValue, (ColorComparable) colorValue, filterOperation);
+						return MatchesFilterOperation(propertyColorValue, (ColorComparable) colorValue, filterOperation, settings);
 					}
 					else
 					{
@@ -204,7 +204,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					try
 					{
 						var animationCurveValue = JsonUtility.FromJson<SerializableAnimationCurve>(animationCurveJson).AnimationCurve;
-						return MatchesFilterOperation(propertyAnimationCurveValue, (AnimationCurveComparable) animationCurveValue, filterOperation);
+						return MatchesFilterOperation(propertyAnimationCurveValue, (AnimationCurveComparable) animationCurveValue, filterOperation, settings);
 					}
 					catch (Exception)
 					{
@@ -218,7 +218,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 					try
 					{
 						var gradientValue = JsonUtility.FromJson<SerializableGradient>(gradientJson).Gradient;
-						return MatchesFilterOperation(propertyGradientValue, (GradientComparable) gradientValue, filterOperation);
+						return MatchesFilterOperation(propertyGradientValue, (GradientComparable) gradientValue, filterOperation, settings);
 					}
 					catch (Exception)
 					{
@@ -244,7 +244,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 			return objAssetPath.ToString().MatchesSearch(path, searchSettings);
 		}
 
-		private static bool MatchesFilterOperation<T>(T propertyValue, T filterValue, string filterOperation) where T : IComparable
+		private static bool MatchesFilterOperation<T>(T propertyValue, T filterValue, string filterOperation, SearchSettings settings) where T : IComparable
 		{
 			switch (filterOperation)
 			{
@@ -266,6 +266,14 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 
 				case "<=":
 					return propertyValue.CompareTo(filterValue) <= 0;
+
+				case "~=":
+				case "=~":
+					return propertyValue.ToString().MatchesSearch(filterValue.ToString(), settings);
+
+				case "!~":
+				case "~!":
+					return !propertyValue.ToString().MatchesSearch(filterValue.ToString(), settings);
 
 				default:
 					return false;

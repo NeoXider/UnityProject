@@ -7,6 +7,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 		public static class Button
 		{
 			public static readonly GUIContent EditScanPath = GetIconContent(EditorIcon.EditPath, $"Specify the folder where Objects are scanned.");
+			public static readonly GUIContent ScanImporters = GetIconContent(EditorIcon.Refresh, "Scans the entire project for Google Sheets Importers and assigns them.");
 			public static readonly GUIContent OpenFile = new GUIContent("Open File", "Opens the settings file directly with your preferred text editor.");
 			public static readonly GUIContent OpenFolder = new GUIContent("Open Folder", "Opens the UserSettings folder for this project.");
 			public static readonly GUIContent OpenWindow = new GUIContent("Open Window", "Opens a separate settings window.");
@@ -28,14 +29,18 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 		public static class Dropdown
 		{
 			public static readonly GUIContent DefaultSheetAssets = new GUIContent("Default Sheet Assets", "The default sheet asset types to display.");
+			public static readonly GUIContent EscapeOption = new GUIContent("Escape Option", "Controls how characters inside a wrapped cell that match the wrapper are escaped.\n\n<b>Backslash</b> adds a backslash before matching characters.\nExample: \"Hello\\\"World!\"\n\n<b>Repeat</b> duplicates the matching character.\nSelect this if working with Google Sheets.\nExample: \"Hello\"\"World!\"");
 			public static readonly GUIContent HeaderFormat = new GUIContent("Header Format", "The text format for the table header row.\n\n<b>Default</b> uses Unity's default display names.\n\n<b>Friendly</b> uses the display name and property path to generate quasi-identifiers that are easy-to-read.\n\n<b>Advanced</b> uses the full property path as-is.");
 			public static readonly GUIContent JsonSerializationFormat = new GUIContent("Json Format", "<b>Flat</b> serializes the table elements as property paths and string values. Recommended for interchangeability between flat file formats.\n\n<b>Hierarchy</b> serializes the table elements using the Object type and utilizes a layered structure.");
 			public static readonly GUIContent ScanOption = new GUIContent("Scan Option", "<b>Default</b> scans for types based on existing instances of the selected Object type.\n\n<b>Assembly</b> scans all assemblies for serializable ScriptableObject types.");
+			public static readonly GUIContent ScanPathOption = new GUIContent("Scan Path Option", "Controls how the <b>Scan Path</b> is selected.\n\n<b>Default</b> lets you select any folder in Assets or Packages, with the root Assets folder selected by default.\n\n<b>Assets</b> selects the Assets folder.\n\n<b>Packages</b> selects the Packages folder.\n\n<b>All</b> selects both the Assets and Packages folders.");
 			public static readonly GUIContent WrapOption = new GUIContent("Wrap Option", "Controls how cell values and headers are wrapped when transferring flat file data.");
 		}
 
 		public static class Label
 		{
+			public static readonly GUIContent RenderingOverrides = new GUIContent("Rendering Overrides", "Serialized property types added here will override Scriptable Sheets' default rendering behavior, allowing the use of custom property drawers and attributes. This may disrupt the table layout or cause unexpected behavior. Use at your own risk.");
+			public static readonly GUIContent GoogleSheetsImporters = new GUIContent("Google Sheets Importers", "Google Sheets Importers to use.");
 			public static readonly GUIContent Scanning = new GUIContent("Scanning", "Settings for scanning Objects.");
 			public static readonly GUIContent Searching = new GUIContent("Searching", "Settings for searching Objects.");
 			public static readonly GUIContent TableNav = new GUIContent("Table Navigation", "Settings for navigating the table view.");
@@ -43,14 +48,21 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 
 		public static class Foldouts
 		{
-			public static readonly GUIContent DataTransfer = new GUIContent("Data Transfer", "Settings for how to handle importing and exporting data.");
-			public static readonly GUIContent ObjectManagement = new GUIContent("Object Management", "Settings for selecting, creating, and filtering Objects.");
-			public static readonly GUIContent UserInterface = new GUIContent("User Interface", "Settings for the user interface.");
+			public static readonly GUIContent DataTransfer = new GUIContent("Data Transfer", "Settings for handling data import and export.");
+			public static readonly GUIContent Experimental = new GUIContent("Experimental", "Settings that may cause unexpected behavior. Use at your own risk.");
+			public static readonly GUIContent ObjectManagement = new GUIContent("Object Management", "Settings for scanning, creating, and filtering Objects.");
+			public static readonly GUIContent UserInterface = new GUIContent("User Interface", "Settings for the user interface, table layout, and table navigation.");
 			public static readonly GUIContent Workload = new GUIContent("Workload", "Settings that affect computational performance. Modify with caution to optimize efficiency and responsiveness.");
+		}
+
+		public static class ObjectField
+		{
+			public static readonly GUIContent DefaultMainAsset = new GUIContent("Default Main Asset", "New ScriptableObjects will be created as a Sub Asset of the specified default Main Asset.");
 		}
 
 		public static class TextField
 		{
+			public static readonly GUIContent CustomEscapeSequence = new GUIContent("Custom Escape", "Custom sequence to add before matching characters.");
 			public static readonly GUIContent NewObjectName = new GUIContent("New Object Name", "The name for newly created Objects. Defaults to the type name if left empty.");
 			public static readonly GUIContent NewObjectPrefix = new GUIContent("New Object Prefix", "Prefix for newly created Objects.");
 			public static readonly GUIContent NewObjectSuffix = new GUIContent("New Object Suffix", "Suffix for newly created Objects.");
@@ -78,6 +90,8 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 			public static readonly GUIContent UseStringEnums = new GUIContent("Use String Enums", "Serialize enum values as their string names. For flat files and flat JSON only.");
 			public static readonly GUIContent IgnoreCase = new GUIContent("Ignore Case", "Ignore case when deserializing enum values from their string names.");
 			public static readonly GUIContent OverrideArraySize = new GUIContent("Override Size", "Enable to override the number of columns displayed for each array.");
+			public static readonly GUIContent RootPrefabsOnly = new GUIContent("Root Prefabs Only", "Scan only for Components that are directly attached to root Prefab assets.\n\nWhen enabled nested Objects and their Components will be ignored.\n\nIf disabled it's recommended to enable <b>Show Asset Path</b> to provide insight on which root asset you're changing.");
+			public static readonly GUIContent ShowScanProgressBar = new GUIContent("Show Progress Bar", "Display a progress bar during Object scanning.");
 			public static readonly GUIContent ShowRowIndex = new GUIContent("Show Row Index", "Display the row index next to each row.");
 			public static readonly GUIContent ShowColumnIndex = new GUIContent("Show Column Index", "Display the column index next to each column.");
 			public static readonly GUIContent ShowChildren = new GUIContent("Show Children", "Display child Object fields. This includes deeply nested child Objects.");
@@ -85,6 +99,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Layout
 			public static readonly GUIContent ShowAssetPath = new GUIContent("Show Asset Path", "Display the asset path for each Object.");
 			public static readonly GUIContent ShowGuid = new GUIContent("Show GUID", "Display each Objects GUID.");
 			public static readonly GUIContent ShowReadOnly = new GUIContent("Show Read-only", "Display read-only fields for each Object.");
+			public static readonly GUIContent SubAssetFilters = new GUIContent("Sub Asset Filters", "Display a Sub Asset filter dropdown with all the Main Assets that contain the selected ScriptableObject type.");
 			public static readonly GUIContent SmartPaste = new GUIContent("Smart Paste", "Enhance pasting by distributing flat file data across table cells using the specified delimiters.");
 			public static readonly GUIContent StartsWith = new GUIContent("Starts With", "Search for Objects that start with the search text entered.");
 			public static readonly GUIContent UseExpansion = new GUIContent("Use Expansion", "Use variable expansion when naming newly created Objects.\n\n<b>{i}</b> becomes the index value.\n\n<b>{t}</b> becomes the type value.");

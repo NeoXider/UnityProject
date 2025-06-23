@@ -66,6 +66,10 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 		public bool ShowReadOnly { get => m_ShowReadOnly; set => m_ShowReadOnly = value; }
 
 		[SerializeField]
+		private bool m_SubAssetFilters = true;
+		public bool SubAssetFilters { get => m_SubAssetFilters; set => m_SubAssetFilters = value; }
+
+		[SerializeField]
 		private TableNavSettings m_TableNav;
 		public TableNavSettings TableNav { get => m_TableNav; set => m_TableNav = value; }
 
@@ -88,10 +92,11 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			m_ShowAssetPath = false;
 			m_ShowGuid = false;
 			m_ShowReadOnly = false;
+			m_SubAssetFilters = true;
 			m_TableNav = new TableNavSettings();
 		}
 
-		protected override void DrawProperties()
+		protected override void DrawProperties(SerializedObject target)
 		{
 			m_DefaultSheetAssets = (SheetAsset) EditorGUILayout.EnumFlagsField(SettingsContent.Dropdown.DefaultSheetAssets, m_DefaultSheetAssets);
 			if (m_DefaultSheetAssets == SheetAsset.Default)
@@ -126,6 +131,7 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 			m_ShowAssetPath = EditorGUILayout.Toggle(SettingsContent.Toggle.ShowAssetPath, m_ShowAssetPath);
 			m_ShowGuid = EditorGUILayout.Toggle(SettingsContent.Toggle.ShowGuid, m_ShowGuid);
 			m_ShowReadOnly = EditorGUILayout.Toggle(SettingsContent.Toggle.ShowReadOnly, m_ShowReadOnly);
+			m_SubAssetFilters = EditorGUILayout.Toggle(SettingsContent.Toggle.SubAssetFilters, m_SubAssetFilters);
 			EditorGUILayout.Space();
 			EditorGUILayout.LabelField(SettingsContent.Label.TableNav, EditorStyles.boldLabel);
 			m_TableNav.AutoScroll = EditorGUILayout.Toggle(SettingsContent.Toggle.AutoScroll, m_TableNav.AutoScroll);

@@ -12,18 +12,18 @@ namespace LunaWolfStudiosEditor.ScriptableSheets
 
 		public abstract GUIContent FoldoutContent { get; }
 
-		public void DrawGUI()
+		public void DrawGUI(SerializedObject target)
 		{
 			SheetLayout.DrawHorizontalLine();
 			m_Foldout = EditorGUILayout.Foldout(m_Foldout, FoldoutContent);
 			if (m_Foldout)
 			{
 				SheetLayout.Indent();
-				DrawProperties();
+				DrawProperties(target);
 				SheetLayout.Unindent();
 			}
 		}
 
-		protected abstract void DrawProperties();
+		protected abstract void DrawProperties(SerializedObject target);
 	}
 }

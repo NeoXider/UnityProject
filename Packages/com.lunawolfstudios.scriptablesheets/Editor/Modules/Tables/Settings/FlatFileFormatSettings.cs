@@ -62,6 +62,14 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 		private WrapOption m_WrapOption;
 		public WrapOption WrapOption { get => m_WrapOption; set => m_WrapOption = value; }
 
+		[SerializeField]
+		private EscapeOption m_EscapeOption;
+		public EscapeOption EscapeOption { get => m_EscapeOption; set => m_EscapeOption = value; }
+
+		[SerializeField]
+		private string m_CustomEscapeSequence;
+		public string CustomEscapeSequence { get => m_CustomEscapeSequence; set => m_CustomEscapeSequence = value; }
+
 		public bool HasHeaders => ColumnHeaders?.Length > 0;
 		public bool HasWrapping => m_WrapOption != WrapOption.None;
 

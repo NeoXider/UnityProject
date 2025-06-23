@@ -29,5 +29,38 @@ namespace LunaWolfStudiosEditor.ScriptableSheets.Tables
 		{
 			return $"{m_Open}{value}{m_Close}";
 		}
+
+		public string WrapInverse(string value)
+		{
+			return $"{m_Close}{value}{m_Open}";
+		}
+
+		public string EscapeContent(string content, string escapedOpen, string escapedClose)
+		{
+			if (string.IsNullOrEmpty(content))
+			{
+				return content;
+			}
+			var escapedContent = content.Replace(m_Open.ToString(), escapedOpen);
+			if (m_Open != m_Close)
+			{
+				escapedContent = escapedContent.Replace(m_Close.ToString(), escapedClose);
+			}
+			return escapedContent;
+		}
+
+		public string UnescapeContent(string content, string escapedOpen, string escapedClose)
+		{
+			if (string.IsNullOrEmpty(content))
+			{
+				return content;
+			}
+			var unescapedContent = content.Replace(escapedOpen, m_Open.ToString());
+			if (escapedOpen != escapedClose)
+			{
+				unescapedContent = unescapedContent.Replace(escapedClose, m_Close.ToString());
+			}
+			return unescapedContent;
+		}
 	}
 }
