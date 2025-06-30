@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0234a9440d9d1774cb279d96ed11bcdb, type: 3}
+  m_Name: Default Wind Effect
+  m_EditorClassIdentifier: 
+  EffectTorque: 1
+  EffectLinear: 1
+  volumetricDensity: 1.239
+  metersPerSecond: 5.59
+  frequency: 10
+  magnitude: 2
+  turbulence: 1.5
+  direction: {x: 1, y: 0, z: 1}

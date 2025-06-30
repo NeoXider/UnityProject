@@ -1,0 +1,44 @@
+#pragma kernel HistogramInitialize
+#pragma kernel HistogramMain
+
+
+Texture2D<float4> InputTexture;
+
+
+struct HistogramStruct
+{
+	uint luminance;
+	uint red;
+	uint green;
+	uint blue;
+	uint alpha;	
+};
+
+RWStructuredBuffer<HistogramStruct> HistogramBuffer;
+
+
+[numthreads(64,1,1)]
+void HistogramInitialize(uint3 id : SV_DispatchThreadID) 
+{
+	HistogramBuffer[id.x].luminance = 0;
+	HistogramBuffer[id.x].red = 0;
+	HistogramBuffer[id.x].green = 0;
+	HistogramBuffer[id.x].blue = 0;
+	HistogramBuffer[id.x].alpha = 0;   
+}
+
+
+[numthreads(8,8,1)]
+void HistogramMain (uint3 id : SV_DispatchThreadID) 
+{
+	float4 tex = InputTexture[id.xy];
+
+	uint4 col = uint4(255.0 * tex);
+
+
+	InterlockedAdd(HistogramBuffer[dot(col.rgb, float3(0.2126729, 0.7151522, 0.0721750))].luminance, 1); 
+    InterlockedAdd(HistogramBuffer[col.r].red, 1);
+    InterlockedAdd(HistogramBuffer[col.g].green, 1); 
+    InterlockedAdd(HistogramBuffer[col.b].blue, 1); 
+    InterlockedAdd(HistogramBuffer[col.a].alpha, 1);    
+}

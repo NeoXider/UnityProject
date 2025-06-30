@@ -1,0 +1,22 @@
+{
+    "name": "Postica.BindingSystem.Runtime",
+    "rootNamespace": "Postica.BindingSystem",
+    "references": [
+        "GUID:3515ec955d79c784095dc9ad934e30e3",
+        "GUID:b995109b61d064096b48a6bea975b555"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "Mono.Cecil.dll",
+        "Mono.Cecil.Mdb.dll",
+        "Mono.Cecil.Pdb.dll",
+        "Mono.Cecil.Rocks.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

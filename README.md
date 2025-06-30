@@ -17,6 +17,7 @@ UnityProject is a full-fledged template for creating games and applications usin
   - Resources: Resources such as textures and audio files.
   - Scripts: Scripts for controlling the behavior of objects or game logic.
   - Settings: Project settings.
+  - Shaders: Shaders
   - Sprites: Transparent images for UI elements.
   - Textures: Textures for various objects and materials.
   - TTF: Fonts.
@@ -43,6 +44,8 @@ All specified packages have already been imported into your project, which simpl
 - DOTween Pro: animation of objects.
 - Epic Toon FX: stylized models.
 - Highlight Plus: highlight elements.
+- All In 1 3D-Shader: Comprehensive shader solution for 3D objects.
+- ArcReactor Rays Generator 1.9: Generates dynamic ray effects for visual enhancement.
 
 ### UI Tools
 - Sprite Shaders Ultimate: shaders for sprites.
@@ -51,12 +54,16 @@ All specified packages have already been imported into your project, which simpl
 - UnityUIExtensions: UI extension.
 - Ultimate Editor Enhancer: Editor improvements.
 - Layer Lab: Tools for managing game object layers.
+- Smart UI Selection for Unity v5.0.5: Advanced UI selection and manipulation tools.
 
 ### Security
 - Obfuscator Pro: Code obfuscation tool
 
 ### Development Tools
 - Scriptable Sheets: ScriptableObjects editor
+- uNode 3 Pro: Visual scripting and node-based programming for Unity.
+- Toolkit for Unity Physics: Tools for advanced physics simulations and interactions.
+- Check Useless Assets: Identifies and manages unused assets in the project.
 
 ### Utilities & Management
 - Tiny: screenshots.
@@ -65,6 +72,10 @@ All specified packages have already been imported into your project, which simpl
 - Zenject: dependency injection.
 - Newtonsoft.Json: JSON serialization.
 - Beautify: Enhances the visual appearance of UI elements with custom shaders and styles.
+- Binding System 2: Links any compatible field or property without additional coding.
+- Bones Assistant: Simplifies bone and rigging management for animations.
+- Texture Adjustments: Tools for fine-tuning and optimizing textures.
+- Better Mesh - Mesh Preview Full-insight at a glance: Detailed mesh preview and analysis tool.
 
 ### Audio
 - Casual Game Sounds U6: Provides a collection of sound effects for casual games.

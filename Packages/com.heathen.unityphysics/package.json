@@ -1,0 +1,24 @@
+{
+  "name": "com.heathen.unityphysics",
+  "displayName": "Toolkit for Unity Physics",
+  "version": "3.2.0",
+  "unity": "2021.3",
+  "author": {
+    "name": "Heathen Group",
+    "email": "support@heathen.group",
+    "url": "https://heathen.group"
+  },
+  "dependencies": {
+    "com.unity.mathematics": "1.2.5"
+  },
+  "documentationUrl": "https://kb.heathen.group/toolkit-for-physics/physkit",
+  "keywords": [],
+  "description": "Do more with Heathen's Toolkit for Unity Physics. Includes Verlet Spring, Buoyancy tool, Force Effect tools, Ballistics and Heathen's Physics Math libraries.",
+  "license": "LICENSE.md",
+  "samples": 
+	[{
+		"displayName": "Example Scenes",
+		"description": "A collection of scenes demonstrating the use of toolkit features",
+		"path": "Samples~/Examples"
+	 }]
+}
